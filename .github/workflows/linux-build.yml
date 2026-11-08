@@ -1,0 +1,65 @@
+# Linux test builds: AppImage, .deb and .rpm for x64 and ARM, attached to the workflow
+# run as downloadable artifacts. No release, no tag, nothing the updater can see.
+# Runs on pushes to the `linux` branch, or by hand (Actions > Linux test build > Run
+# workflow) once this file is on the default branch.
+name: Linux test build
+
+on:
+  push:
+    branches: [linux]
+  workflow_dispatch:
+
+concurrency:
+  group: linux-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Ubuntu 24.04, not older: ONNX Runtime's prebuilt library needs glibc 2.38+.
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Tauri's Linux build dependencies (WebKitGTK, tray, keyring over D-Bus, XTest for paste).
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libdbus-1-dev libssl-dev patchelf
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      # Same secrets as a release: the Google sign-in client is embedded (so testers
+      # don't have to make their own), and the updater bundles need the signing key.
+      - name: Build
+        env:
+          MEMEITY_GOOGLE_CLIENT_ID: ${{ secrets.MEMEITY_GOOGLE_CLIENT_ID }}
+          MEMEITY_GOOGLE_CLIENT_SECRET: ${{ secrets.MEMEITY_GOOGLE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memeity-linux-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+          retention-days: 30
