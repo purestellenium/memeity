@@ -51,7 +51,7 @@ jobs:
                 "- **Windows on ARM** (e.g. Snapdragon laptops): `memeity_*_arm64-setup.exe`",
                 "- **Mac (Apple Silicon):** `memeity_*_aarch64.dmg`",
                 "- **Mac (Intel):** `memeity_*_x64.dmg` (no text recognition: search by name, plus text read on your other devices)",
-                "- **Linux:** `memeity_*_amd64.AppImage` (any distro), `.deb` (Debian, Ubuntu) or `.rpm` (Fedora, openSUSE); `aarch64` / `arm64` files for ARM",
+                "- **Linux:** `memeity_*_amd64.AppImage` (any distro), `.deb` (Debian, Ubuntu) or `.rpm` (Fedora, openSUSE); `aarch64` / `arm64` files for ARM. Needs a 2024-or-newer distro (Ubuntu 24.04+, Debian 13, Fedora 39+)",
                 "",
                 "The Mac builds are signed and notarized by Apple. The Windows builds aren't code-signed, so Windows may show \"Windows protected your PC\": click **More info → Run anyway**.",
               ].join("\n"),
@@ -76,11 +76,11 @@ jobs:
           # leaves out text recognition (the `ocr` feature). See src-tauri/src/ocr.rs.
           - platform: macos-latest
             args: --target x86_64-apple-darwin -- --no-default-features
-          # Linux: AppImage, .deb and .rpm. Built on the oldest supported Ubuntu, so the
-          # binaries also run on distros with an older glibc.
-          - platform: ubuntu-22.04
+          # Linux: AppImage, .deb and .rpm. Ubuntu 24.04, not older: ONNX Runtime's prebuilt
+          # library needs glibc 2.38+ (so does the app: Ubuntu 24.04+, Debian 13, Fedora 39+).
+          - platform: ubuntu-24.04
             args: ""
-          - platform: ubuntu-22.04-arm
+          - platform: ubuntu-24.04-arm
             args: ""
     runs-on: ${{ matrix.platform }}
     steps:
