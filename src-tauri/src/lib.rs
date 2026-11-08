@@ -1401,6 +1401,9 @@ pub fn run() {
                 .level_for("hyper", log::LevelFilter::Warn)
                 .level_for("hyper_util", log::LevelFilter::Warn)
                 .level_for("ort", log::LevelFilter::Warn)
+                // On Wayland without the data-control protocol it warns, then falls back to
+                // the X11 clipboard (via XWayland), which works: not worth a log line each time.
+                .level_for("arboard", log::LevelFilter::Error)
                 .max_file_size(1_000_000)
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
                 .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
@@ -1506,6 +1509,12 @@ pub fn run() {
 
             if let Ok(cache) = app.path().app_cache_dir() {
                 clipboard::set_share_dir(cache.join("shared"));
+            }
+
+            // Linux without a Secret Service: the sign-in falls back to a private file here.
+            #[cfg(target_os = "linux")]
+            if let Ok(data) = app.path().app_data_dir() {
+                google::set_token_fallback_file(data.join("google-token"));
             }
 
             app.manage(AppState {

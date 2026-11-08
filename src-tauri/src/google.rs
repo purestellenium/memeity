@@ -1,7 +1,9 @@
 //! Google sign-in (desktop loopback + PKCE) and the few Drive v3 calls memeity needs.
 //!
 //! The refresh token lives in the OS keychain (Windows Credential Manager,
-//! macOS Keychain, Secret Service on Linux), never in a file.
+//! macOS Keychain, Secret Service on Linux). The one exception: Linux desktops with no
+//! Secret Service running (common on minimal Wayland setups) keep it in a file only the
+//! user can read, like `gh` and other CLI tools do (see `token_store`).
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::{distributions::Alphanumeric, Rng};
@@ -95,6 +97,96 @@ fn keyring_entry() -> keyring::Result<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
 }
 
+/// Where the refresh token is kept: the OS keychain, plus the Linux file fallback.
+mod token_store {
+    use super::keyring_entry;
+    #[cfg(target_os = "linux")]
+    use std::path::PathBuf;
+
+    /// The fallback file (in the app data dir). Set once at startup.
+    #[cfg(target_os = "linux")]
+    static FILE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+    #[cfg(target_os = "linux")]
+    pub fn set_fallback_file(path: PathBuf) {
+        let _ = FILE.set(path);
+    }
+
+    pub fn load() -> Option<String> {
+        if let Some(token) = keyring_entry().ok().and_then(|e| e.get_password().ok()) {
+            return Some(token);
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(path) = FILE.get()
+            && let Ok(token) = std::fs::read_to_string(path)
+        {
+            let token = token.trim().to_string();
+            if !token.is_empty() {
+                return Some(token);
+            }
+        }
+        None
+    }
+
+    pub fn save(token: &str) -> Result<(), String> {
+        let saved = keyring_entry().and_then(|e| e.set_password(token));
+        #[cfg(target_os = "linux")]
+        {
+            match saved {
+                // In the keychain: drop any older copy in the file.
+                Ok(()) => {
+                    if let Some(path) = FILE.get() {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    log::warn!("no usable system keychain ({e}); keeping the sign-in in a private file instead");
+                    return save_file(token).map_err(|f| {
+                        format!("Couldn't save sign-in: the system keychain isn't available ({e}), and neither is memeity's data folder ({f}).")
+                    });
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        saved.map_err(|e| format!("Couldn't save sign-in to the system keychain: {e}"))
+    }
+
+    /// Readable and writable by the user only (0600), written atomically.
+    #[cfg(target_os = "linux")]
+    fn save_file(token: &str) -> Result<(), String> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let path = FILE.get().ok_or("no data folder")?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let tmp = path.with_extension("tmp");
+        let _ = std::fs::remove_file(&tmp);
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+            .map_err(|e| e.to_string())?;
+        file.write_all(token.as_bytes()).and_then(|()| file.sync_all()).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+    }
+
+    pub fn delete() {
+        if let Ok(entry) = keyring_entry() {
+            let _ = entry.delete_credential();
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(path) = FILE.get() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub use token_store::set_fallback_file as set_token_fallback_file;
+
 fn random_string(len: usize) -> String {
     rand::thread_rng().sample_iter(&Alphanumeric).take(len).map(char::from).collect()
 }
@@ -123,7 +215,7 @@ async fn check(resp: reqwest::Response) -> Result<reqwest::Response, String> {
 
 impl Google {
     pub fn new(creds: Option<ClientCreds>) -> Self {
-        let refresh = keyring_entry().ok().and_then(|e| e.get_password().ok());
+        let refresh = token_store::load();
         Google {
             // No overall or read timeout: a big upload can go a long time without hearing
             // back, and timing out one Drive already accepted would upload it twice.
@@ -175,9 +267,7 @@ impl Google {
         if let Ok(mut access) = self.access.try_lock() {
             *access = None;
         }
-        if let Ok(entry) = keyring_entry() {
-            let _ = entry.delete_credential();
-        }
+        token_store::delete();
         refresh
     }
 
@@ -235,9 +325,7 @@ impl Google {
             .refresh_token
             .ok_or("Google didn't return a refresh token. Remove memeity's access at myaccount.google.com/permissions and try again.")?;
 
-        keyring_entry()
-            .and_then(|e| e.set_password(&refresh))
-            .map_err(|e| format!("Couldn't save sign-in to the system keychain: {e}"))?;
+        token_store::save(&refresh)?;
         *self.refresh_token.lock().unwrap() = Some(refresh);
         let epoch = self.epoch.load(Ordering::SeqCst);
         *self.access.lock().await = Some((token.access_token, expiry(token.expires_in), epoch));
