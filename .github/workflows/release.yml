@@ -51,6 +51,7 @@ jobs:
                 "- **Windows on ARM** (e.g. Snapdragon laptops): `memeity_*_arm64-setup.exe`",
                 "- **Mac (Apple Silicon):** `memeity_*_aarch64.dmg`",
                 "- **Mac (Intel):** `memeity_*_x64.dmg` (no text recognition: search by name, plus text read on your other devices)",
+                "- **Linux:** `memeity_*_amd64.AppImage` (any distro), `.deb` (Debian, Ubuntu) or `.rpm` (Fedora, openSUSE); `aarch64` / `arm64` files for ARM",
                 "",
                 "The Mac builds are signed and notarized by Apple. The Windows builds aren't code-signed, so Windows may show \"Windows protected your PC\": click **More info → Run anyway**.",
               ].join("\n"),
@@ -75,6 +76,12 @@ jobs:
           # leaves out text recognition (the `ocr` feature). See src-tauri/src/ocr.rs.
           - platform: macos-latest
             args: --target x86_64-apple-darwin -- --no-default-features
+          # Linux: AppImage, .deb and .rpm. Built on the oldest supported Ubuntu, so the
+          # binaries also run on distros with an older glibc.
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: ubuntu-22.04-arm
+            args: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v5
@@ -116,6 +123,14 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+
+      # Tauri's Linux build dependencies (WebKitGTK, tray, keyring over D-Bus, XTest for paste).
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libdbus-1-dev libssl-dev patchelf
 
       - uses: dtolnay/rust-toolchain@stable
         with:

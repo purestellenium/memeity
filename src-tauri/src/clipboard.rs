@@ -60,7 +60,7 @@ fn with_retries(
 ) -> Result<(), String> {
     let mut last_err = String::new();
     for attempt in 1..=COPY_ATTEMPTS {
-        match arboard::Clipboard::new().and_then(|mut cb| write(&mut cb)) {
+        match with_clipboard(&write) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 log::warn!("copy attempt {attempt}/{COPY_ATTEMPTS} for {} failed: {e}", path.display());
@@ -70,6 +70,28 @@ fn with_retries(
         }
     }
     Err(format!("Couldn't copy {}: {last_err}", path.file_name().unwrap_or_default().to_string_lossy()))
+}
+
+/// Windows and macOS keep clipboard contents after the writer goes away.
+#[cfg(not(target_os = "linux"))]
+fn with_clipboard(write: &impl Fn(&mut arboard::Clipboard) -> Result<(), arboard::Error>) -> Result<(), arboard::Error> {
+    arboard::Clipboard::new().and_then(|mut cb| write(&mut cb))
+}
+
+/// On Linux the copying app serves the clipboard itself: dropping the last handle loses
+/// the meme unless a clipboard manager grabs it first. Keep one handle for the app's life.
+#[cfg(target_os = "linux")]
+fn with_clipboard(write: &impl Fn(&mut arboard::Clipboard) -> Result<(), arboard::Error>) -> Result<(), arboard::Error> {
+    static KEPT: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    if kept.is_none() {
+        *kept = Some(arboard::Clipboard::new()?);
+    }
+    let result = write(kept.as_mut().expect("just set"));
+    if result.is_err() {
+        *kept = None; // start fresh on the next attempt
+    }
+    result
 }
 
 // ---------- shareable copies ----------

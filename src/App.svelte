@@ -564,6 +564,7 @@
 
   /** Platform-specific wording for shortcut hints (the handlers accept Ctrl or Cmd). */
   const isMac = navigator.userAgent.includes("Mac");
+  const isLinux = !isMac && navigator.userAgent.includes("Linux");
   const MOD = isMac ? "⌘" : "Ctrl";
   const credentialStore = isMac
     ? "your macOS Keychain"
@@ -1628,7 +1629,7 @@
   </svg>
 {/snippet}
 
-<main class:pane={stage === "ready"} class:mac={isMac}>
+<main class:pane={stage === "ready"} class:mac={isMac} class:linux={isLinux}>
   <!-- Screen readers hear how many memes match as you type. -->
   {#if stage === "ready"}
     <p class="sr-only" aria-live="polite">{query.trim() ? `${total} ${total === 1 ? "meme" : "memes"}` : ""}</p>
@@ -2268,8 +2269,8 @@
   }
 
   /* The frameless pane draws its own hairline edge. Its radius has to match the native
-     corner clip (Windows 11: 8px; macOS: PANE_RADIUS in lib.rs), or the page background
-     shows as a dark band between the two curves. */
+     corner clip (Windows 11: 8px; macOS: PANE_RADIUS in lib.rs; Linux: none), or the
+     page background shows as a dark band between the two curves. */
   main.pane {
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -2278,6 +2279,12 @@
 
   main.pane.mac {
     border-radius: 16px;
+  }
+
+  /* Linux windows aren't clipped to a rounded shape, so round corners would leave the
+     page background showing in each one. */
+  main.pane.linux {
+    border-radius: 0;
   }
 
   .icon {

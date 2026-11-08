@@ -176,6 +176,10 @@ pub fn register_initial(app: &AppHandle) {
 /// combinations Windows won't hand out (Win+Space, Alt+Space...), memeity's own keyboard
 /// hook (see winhook.rs), like Raycast.
 fn register(app: &AppHandle, shortcut: Shortcut) -> Result<(), String> {
+    // Wayland has no global hotkeys for apps: a grab only fires while an X11 app has focus.
+    if wayland() {
+        return Err("Wayland session".into());
+    }
     match app.global_shortcut().register(shortcut) {
         Ok(()) => {
             #[cfg(windows)]
@@ -201,9 +205,26 @@ fn unregister(app: &AppHandle, shortcut: Shortcut) {
     crate::winhook::set_target(None);
 }
 
+/// A Linux Wayland session, where apps can't register global shortcuts. Opening memeity
+/// again shows the running copy's pane, so a system shortcut that runs `memeity` works.
+pub fn wayland() -> bool {
+    cfg!(target_os = "linux")
+        && (std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|t| t.eq_ignore_ascii_case("wayland")))
+}
+
 /// Shown when a shortcut can't be registered (almost always: another app owns it).
 fn taken_message(shortcut: &Shortcut) -> String {
-    let os = if cfg!(target_os = "macos") { "macOS" } else { "Windows" };
+    if wayland() {
+        return "Wayland doesn't let apps set global shortcuts. Add one in your system's keyboard settings that runs `memeity`.".into();
+    }
+    let os = if cfg!(target_os = "macos") {
+        "macOS"
+    } else if cfg!(windows) {
+        "Windows"
+    } else {
+        "your desktop"
+    };
     format!("{} is already used by another app or {os}, so it can't open memeity.", label(shortcut))
 }
 
@@ -227,7 +248,8 @@ fn apply(app: &AppHandle, next: Shortcut) -> Result<(), String> {
         if old_registered {
             let _ = register(app, old);
         }
-        return Err(format!("{} Try another combination.", taken_message(&next)));
+        let hint = if wayland() { "" } else { " Try another combination." };
+        return Err(format!("{}{hint}", taken_message(&next)));
     }
     *app.state::<AppState>().shortcut.lock().unwrap() = next;
     *app.state::<AppState>().shortcut_error.lock().unwrap() = None;

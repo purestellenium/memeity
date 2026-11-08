@@ -27,7 +27,9 @@ tauri-plugin-opener = "2"
 # Google Drive sync
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "charset"] }
 tokio = { version = "1", features = ["net", "time", "io-util", "sync", "macros", "rt", "fs"] }
-keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+# Linux: the Secret Service (GNOME Keyring, KWallet), so sign-in survives a reboot;
+# `linux-native` alone is the kernel keyring, which forgets everything at logout.
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native-sync-persistent", "crypto-rust"] }
 sha2 = "0.10"
 md-5 = "0.10"
 base64 = "0.22"
@@ -41,7 +43,8 @@ serde_json = "1"
 notify = "8"
 nucleo-matcher = "0.3"
 walkdir = "2"
-arboard = "3"
+# Linux: Wayland clipboard as well as X11.
+arboard = { version = "3", features = ["wayland-data-control"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 tauri-plugin-autostart = "2"
 enigo = "0.6"
