@@ -270,8 +270,13 @@ pub fn import_clipboard(app: AppHandle, pasted_text: Option<String>) -> Result<I
                     .map_err(|e| format!("Couldn't read the image on the clipboard: {e}"))?;
                 result = add_bytes(&app, None, &png)?;
             }
-            Err(arboard::Error::ContentNotAvailable) => {}
-            Err(e) => return Err(format!("Couldn't read the image on the clipboard: {e}")),
+            // An image that's there but won't decode (huge, damaged). Anything else means there's
+            // no image: apps that only offer text answer an image request in all sorts of ways
+            // (nothing, or "incorrect type received").
+            Err(e @ arboard::Error::ConversionFailure) => {
+                return Err(format!("Couldn't read the image on the clipboard: {e}"));
+            }
+            Err(_) => {}
         }
     }
     finish(&app, &result);
