@@ -127,7 +127,7 @@ pub fn label(shortcut: &Shortcut) -> String {
         parts.push("Shift".into());
     }
     if shortcut.mods.contains(Modifiers::SUPER) {
-        parts.push(if mac { "Cmd" } else { "Win" }.into());
+        parts.push(if mac { "Cmd" } else if cfg!(windows) { "Win" } else { "Super" }.into());
     }
     let code = shortcut.key.to_string();
     let key = match code.as_str() {
@@ -156,7 +156,7 @@ fn parse(accelerator: &str) -> Result<Shortcut, String> {
     let shortcut: Shortcut = accelerator.parse().map_err(|e| format!("That's not a valid shortcut: {e}"))?;
     let has_main_modifier = shortcut.mods.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER);
     if !has_main_modifier {
-        return Err("Include Ctrl, Alt or Win (Cmd/Option on Mac), so it doesn't clash with typing.".into());
+        return Err("Include Ctrl, Alt or Win/Super (Cmd/Option on Mac), so it doesn't clash with typing.".into());
     }
     Ok(shortcut)
 }
@@ -203,7 +203,13 @@ fn unregister(app: &AppHandle, shortcut: Shortcut) {
 
 /// Shown when a shortcut can't be registered (almost always: another app owns it).
 fn taken_message(shortcut: &Shortcut) -> String {
-    let os = if cfg!(target_os = "macos") { "macOS" } else { "Windows" };
+    let os = if cfg!(target_os = "macos") {
+        "macOS"
+    } else if cfg!(windows) {
+        "Windows"
+    } else {
+        "your desktop"
+    };
     format!("{} is already used by another app or {os}, so it can't open memeity.", label(shortcut))
 }
 
@@ -329,8 +335,8 @@ pub fn set_pane_scale(app: AppHandle, percent: u32) -> Result<Status, String> {
     if crate::is_ready(&app)
         && let Some(win) = crate::pane(&app)
     {
-        crate::lock_size(&app, &win);
-        crate::position_pane(&app, &win);
+        let size = crate::lock_size(&app, &win);
+        crate::position_pane(&app, &win, size);
     }
     Ok(status(&app))
 }

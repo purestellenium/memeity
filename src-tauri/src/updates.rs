@@ -69,7 +69,7 @@ pub async fn install(app: &AppHandle) -> Result<(), String> {
         .download_and_install(|_, _| {}, || {})
         .await
         .map_err(|e| format!("Couldn't install the update: {e}"))?;
-    // Windows exits on its own to run the installer; macOS needs a relaunch.
+    // Windows exits on its own to run the installer; macOS and Linux need a relaunch.
     app.restart();
 }
 

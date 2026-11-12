@@ -199,10 +199,10 @@ fn apply_window_mode(app: &AppHandle) {
     let _ = win.set_title(if ready { "memeity" } else { "memeity setup" });
     // macOS: menu-bar only once set up; a regular Dock app during setup.
     settings::update_activation_policy(app);
-    lock_size(app, &win);
+    let size = lock_size(app, &win);
     set_rounded(&win, ready);
     if ready {
-        position_pane(app, &win);
+        position_pane(app, &win, size);
     } else {
         let _ = win.center();
     }
@@ -308,13 +308,12 @@ fn pane(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(PANE)
 }
 
-/// Put the pane on whichever monitor the cursor is on, centered, in the upper third.
-fn position_pane(app: &AppHandle, win: &WebviewWindow) {
+/// Put the pane, `size` big (from `lock_size`), on whichever monitor the cursor is on,
+/// centered, in the upper third.
+fn position_pane(app: &AppHandle, win: &WebviewWindow, size: LogicalSize<f64>) {
     let Ok(cursor) = app.cursor_position() else { return };
     let Ok(Some(monitor)) = app.monitor_from_point(cursor.x, cursor.y) else { return };
-    // The size it's being set to, not `outer_size()`: on Linux a resize lands later, so
-    // right after `lock_size` that would still be the old size.
-    let size = pane_size(app, win).to_physical::<i32>(monitor.scale_factor());
+    let size = size.to_physical::<i32>(monitor.scale_factor());
     let (mp, ms) = (monitor.position(), monitor.size());
     let x = mp.x + (ms.width as i32 - size.width) / 2;
     let y = mp.y + (ms.height as i32 - size.height) / 3;
@@ -344,7 +343,9 @@ fn pane_size(app: &AppHandle, win: &WebviewWindow) -> LogicalSize<f64> {
 
 /// Pin the window to its size. Re-applied on every show because window managers
 /// (e.g. tiling ones like komorebi) or a maximize can resize it behind our back.
-fn lock_size(app: &AppHandle, win: &WebviewWindow) {
+/// Returns the size: position with it, not `outer_size()`, which on Linux still reports
+/// the old size until GTK gets round to the resize.
+fn lock_size(app: &AppHandle, win: &WebviewWindow) -> LogicalSize<f64> {
     let size = pane_size(app, win);
     if win.is_maximized().unwrap_or(false) {
         let _ = win.unmaximize();
@@ -355,6 +356,7 @@ fn lock_size(app: &AppHandle, win: &WebviewWindow) {
     let _ = win.set_size(size);
     let _ = win.set_min_size(Some(size));
     let _ = win.set_max_size(Some(size));
+    size
 }
 
 /// The quick editor opened or closed: resize the pane (and re-center it on its screen),
@@ -363,10 +365,9 @@ fn lock_size(app: &AppHandle, win: &WebviewWindow) {
 fn set_editing(app: AppHandle, active: bool) {
     app.state::<AppState>().editing.store(active, Ordering::SeqCst);
     let Some(win) = pane(&app) else { return };
-    lock_size(&app, &win);
+    let size = lock_size(&app, &win);
     if let Ok(Some(monitor)) = win.current_monitor() {
-        // Not `outer_size()`, which on Linux is still the old size here (see position_pane).
-        let size = pane_size(&app, &win).to_physical::<i32>(monitor.scale_factor());
+        let size = size.to_physical::<i32>(monitor.scale_factor());
         let area = monitor.work_area();
         let x = area.position.x + (area.size.width as i32 - size.width) / 2;
         let y = area.position.y + (area.size.height as i32 - size.height) / if active { 2 } else { 3 };
@@ -396,10 +397,10 @@ fn show_pane(app: &AppHandle) {
     let _ = app.show();
     apply_window_mode(app);
     if is_ready(app) {
-        lock_size(app, &win);
+        let size = lock_size(app, &win);
         // Mid-edit, it reopens wherever the user dragged it.
         if !app.state::<AppState>().editing.load(Ordering::SeqCst) {
-            position_pane(app, &win);
+            position_pane(app, &win, size);
         }
     }
     app.state::<AppState>().had_focus.store(false, Ordering::SeqCst);
@@ -1120,7 +1121,7 @@ async fn drag_meme(app: AppHandle, window: WebviewWindow, path: String) -> Resul
     rx.await.map_err(|e| e.to_string())?
 }
 
-/// Show in folder (Ctrl+Shift+F): open Explorer/Finder with the meme selected.
+/// Show in folder (Ctrl+Shift+F): open Explorer, Finder or the file manager, with the meme selected.
 #[tauri::command]
 fn reveal_meme(app: AppHandle, path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
@@ -1591,6 +1592,8 @@ pub fn run() {
                 clipboard::set_share_dir(cache.join("shared"));
             }
 
+            #[cfg(target_os = "linux")]
+            google::pick_keyring();
             app.manage(AppState {
                 library: RwLock::new(Library::default()),
                 google: Google::new(creds),

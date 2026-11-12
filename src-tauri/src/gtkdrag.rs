@@ -5,9 +5,8 @@
 //! disconnects its data handler as soon as the drop is sent, before the target has asked
 //! for the data (drag-rs#84). This is the same drag, cleaned up only once GTK says it's over.
 
-use gtk::glib::prelude::ObjectExt as _;
 use gtk::{gdk, gdk_pixbuf, glib, prelude::*};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -24,7 +23,6 @@ pub fn start(
     targets.add_uri_targets(0);
 
     let handlers: Rc<RefCell<Vec<glib::SignalHandlerId>>> = Rc::default();
-    let dropped = Rc::new(Cell::new(false));
 
     // The target asks for the data after the drop, so this stays connected until drag-end.
     let data_get = window.connect_drag_data_get(move |_, _, data, _, _| {
@@ -32,12 +30,11 @@ pub fn start(
     });
     let end = {
         let handlers = handlers.clone();
-        let dropped = dropped.clone();
-        window.connect_drag_end(move |window, _| {
+        window.connect_drag_end(move |window, context| {
             for id in handlers.take() {
                 window.disconnect(id);
             }
-            on_end(dropped.get());
+            on_end(context.drag_drop_succeeded());
         })
     };
     handlers.borrow_mut().extend([data_get, end]);
@@ -49,7 +46,6 @@ pub fn start(
         }
         return Err("GTK didn't start the drag.".into());
     };
-    context.connect_drop_performed(move |_, _| dropped.set(true));
     if let Some(pixbuf) = pixbuf(icon) {
         context.drag_set_icon_pixbuf(&pixbuf, pixbuf.width() / 2, pixbuf.height() / 2);
     }

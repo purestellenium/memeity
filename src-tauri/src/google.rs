@@ -95,6 +95,18 @@ fn keyring_entry() -> keyring::Result<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
 }
 
+/// Linux: the sign-in is kept in the Secret Service (GNOME Keyring, KWallet), which lasts
+/// across reboots. Some minimal desktops run none; there, fall back to the kernel keyring,
+/// so signing in still works, it just doesn't survive a reboot. Call before `Google::new`.
+#[cfg(target_os = "linux")]
+pub fn pick_keyring() {
+    let probe = keyring_entry().and_then(|e| e.get_password());
+    if let Err(keyring::Error::PlatformFailure(e) | keyring::Error::NoStorageAccess(e)) = probe {
+        log::warn!("no Secret Service ({e}); the sign-in won't survive a reboot");
+        keyring::set_default_credential_builder(keyring::keyutils::default_credential_builder());
+    }
+}
+
 fn random_string(len: usize) -> String {
     rand::thread_rng().sample_iter(&Alphanumeric).take(len).map(char::from).collect()
 }

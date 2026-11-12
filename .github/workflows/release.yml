@@ -45,7 +45,7 @@ jobs:
               draft: true,
               prerelease: false,
               body: [
-                "Download the installer for your computer below.",
+                "Download the one for your computer below.",
                 "",
                 "- **Windows:** `memeity_*_x64-setup.exe`",
                 "- **Windows on ARM** (e.g. Snapdragon laptops): `memeity_*_arm64-setup.exe`",
@@ -160,7 +160,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS: Tauri imports the certificate into a temporary keychain, signs with the
-          # hardened runtime, then notarizes and staples. Unset on Windows (ignored there).
+          # hardened runtime, then notarizes and staples. Unset on Windows and Linux (ignored there).
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}

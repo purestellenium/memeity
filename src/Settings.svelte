@@ -57,6 +57,8 @@
   type Section = (typeof sections)[number]["id"];
 
   const isMac = navigator.userAgent.includes("Mac");
+  /** What the Super/Meta key is called here. */
+  const superKey = isMac ? "Cmd" : navigator.userAgent.includes("Windows") ? "Win" : "Super";
 
   // ---------- search ----------
 
@@ -208,7 +210,7 @@
     if (e.ctrlKey) parts.push("Ctrl");
     if (e.altKey) parts.push(isMac ? "Option" : "Alt");
     if (e.shiftKey) parts.push("Shift");
-    if (e.metaKey) parts.push(isMac ? "Cmd" : "Win");
+    if (e.metaKey) parts.push(superKey);
     return parts;
   }
 
@@ -281,7 +283,7 @@
     if (nativeCapture) return;
     preview = [...mods, keyLabel(e.code)];
     if (!e.ctrlKey && !e.altKey && !e.metaKey) {
-      error = `Include ${isMac ? "Ctrl, Option or Cmd" : "Ctrl, Alt or Win"} so the shortcut doesn't clash with typing.`;
+      error = `Include ${isMac ? "Ctrl, Option or Cmd" : `Ctrl, Alt or ${superKey}`} so the shortcut doesn't clash with typing.`;
       return;
     }
     const accelerator = [
@@ -312,7 +314,7 @@
       keyLabel(key),
     ];
     if (!has("control") && !has("alt") && !has("super")) {
-      error = `Include ${isMac ? "Ctrl, Option or Cmd" : "Ctrl, Alt or Win"} so the shortcut doesn't clash with typing.`;
+      error = `Include ${isMac ? "Ctrl, Option or Cmd" : `Ctrl, Alt or ${superKey}`} so the shortcut doesn't clash with typing.`;
       recording = false;
       return;
     }

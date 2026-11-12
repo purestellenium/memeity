@@ -1119,7 +1119,7 @@
       if (hit) await invoke("insert_meme", { path: hit.path }); // hides the pane itself
     });
 
-  /** Show in folder (Ctrl+Shift+F): Explorer/Finder with the meme selected. */
+  /** Show in folder (Ctrl+Shift+F): Explorer, Finder or the file manager, with the meme selected. */
   /** Pins the meme to the top of an empty search (on every device), or unpins it. */
   const togglePin = (i = selected) =>
     act(async () => {
@@ -1345,6 +1345,17 @@
     await runSearch(true);
   }
 
+  /**
+   * Linux file managers put copied files on the clipboard as text too: paths (GNOME Files,
+   * Dolphin), `file://` URIs, or Nautilus' older `x-special/nautilus-clipboard` / `copy`
+   * header. Text that's only that is a file paste, not a search.
+   */
+  function isCopiedFiles(text: string) {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const isPath = (l: string) => /^(file:\/\/|\/)/.test(l);
+    return lines.some(isPath) && lines.every((l) => isPath(l) || /^(x-special\/|copy$|cut$)/.test(l));
+  }
+
   function onPaste(e: ClipboardEvent) {
     if (stage !== "ready" || !e.clipboardData) return;
     const files = Array.from(e.clipboardData.files);
@@ -1355,7 +1366,7 @@
     } else if (isUrl(text)) {
       e.preventDefault();
       addMemes([], [text.trim()]);
-    } else if (isLinux && !text) {
+    } else if (isLinux && (!text || isCopiedFiles(text))) {
       // WebKitGTK leaves pasted images and files out of the event: read the clipboard natively.
       e.preventDefault();
       addMemes([], [], true);
