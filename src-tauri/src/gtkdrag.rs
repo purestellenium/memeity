@@ -6,7 +6,7 @@
 //! for the data (drag-rs#84). This is the same drag, cleaned up only once GTK says it's over.
 
 use gtk::{gdk, gdk_pixbuf, glib, prelude::*};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -23,21 +23,32 @@ pub fn start(
     targets.add_uri_targets(0);
 
     let handlers: Rc<RefCell<Vec<glib::SignalHandlerId>>> = Rc::default();
+    // drag-failed comes before drag-end for anything but a drop the target took: no target,
+    // Esc, a timeout. (`drag_drop_succeeded()` can't say: it's always false on Wayland, and
+    // true after a cancel on X11.)
+    let failed = Rc::new(Cell::new(false));
 
     // The target asks for the data after the drop, so this stays connected until drag-end.
     let data_get = window.connect_drag_data_get(move |_, _, data, _, _| {
         data.set_uris(&[uri.as_str()]);
     });
+    let fail = {
+        let failed = failed.clone();
+        window.connect_drag_failed(move |_, _, _| {
+            failed.set(true);
+            glib::Propagation::Proceed // the usual snap-back animation
+        })
+    };
     let end = {
         let handlers = handlers.clone();
-        window.connect_drag_end(move |window, context| {
+        window.connect_drag_end(move |window, _| {
             for id in handlers.take() {
                 window.disconnect(id);
             }
-            on_end(context.drag_drop_succeeded());
+            on_end(!failed.get());
         })
     };
-    handlers.borrow_mut().extend([data_get, end]);
+    handlers.borrow_mut().extend([data_get, fail, end]);
 
     // Button 1: the pane only starts drags from a primary-button press.
     let Some(context) = window.drag_begin_with_coordinates(&targets, gdk::DragAction::COPY, 1, None, -1, -1) else {

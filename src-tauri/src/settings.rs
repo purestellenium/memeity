@@ -156,7 +156,8 @@ fn parse(accelerator: &str) -> Result<Shortcut, String> {
     let shortcut: Shortcut = accelerator.parse().map_err(|e| format!("That's not a valid shortcut: {e}"))?;
     let has_main_modifier = shortcut.mods.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER);
     if !has_main_modifier {
-        return Err("Include Ctrl, Alt or Win/Super (Cmd/Option on Mac), so it doesn't clash with typing.".into());
+        let super_key = if cfg!(windows) { "Win" } else { "Super" };
+        return Err(format!("Include Ctrl, Alt or {super_key} (Cmd/Option on Mac), so it doesn't clash with typing."));
     }
     Ok(shortcut)
 }

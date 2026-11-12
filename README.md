@@ -38,7 +38,7 @@ memeity aims to fix this issue by hosting all of your memes on Google Drive - sy
 ## Installation
 Grab the [latest release](https://github.com/purestellenium/memeity/releases/latest) for your platform, and install normally following the wizard / DMG file.
 
-On Linux, download the `.AppImage`, make it executable (`chmod +x memeity_*.AppImage`) and run it. It needs a 2024-or-newer distro (glibc 2.38+, e.g. Ubuntu 24.04, Fedora 39, Debian 13) and a Secret Service keyring (GNOME Keyring or KWallet) to keep you signed in. The shortcut, Paste to App and pane placement need X11; on Wayland, bind a desktop shortcut to the AppImage instead: launching it again opens the pane.
+On Linux, download the `.AppImage`, make it executable (`chmod +x memeity_*.AppImage`) and run it. It needs a 2024-or-newer distro (glibc 2.38+, e.g. Ubuntu 24.04, Fedora 39, Debian 13) and a Secret Service keyring (GNOME Keyring or KWallet) to stay signed in after a reboot. Without one, you're signed out each time you restart. The shortcut, Paste to App and pane placement need X11; on Wayland, bind a desktop shortcut to the AppImage instead: launching it again opens the pane.
 
 ## AI Declaration
 I used AI heavily (Claude Opus 5.5) in the development of memeity- I just wanted something that worked, and so using AI was the quickest way to make this happen.

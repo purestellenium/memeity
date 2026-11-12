@@ -254,6 +254,9 @@ pub fn import_clipboard(app: AppHandle) -> Result<ImportResult, String> {
         match clipboard.get_image() {
             Ok(pixels) => {
                 use image::ImageEncoder;
+                if pixels.bytes.len() != pixels.width * pixels.height * 4 {
+                    return Err("The image on the clipboard is damaged.".into());
+                }
                 let mut png = Vec::new();
                 image::codecs::png::PngEncoder::new(&mut png)
                     .write_image(&pixels.bytes, pixels.width as u32, pixels.height as u32, image::ExtendedColorType::Rgba8)

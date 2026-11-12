@@ -1280,9 +1280,12 @@
 
   const isUrl = (text: string) => /^https?:\/\/\S+$/i.test(text.trim());
 
-  /** `clipboard`: also add whatever image or files are on the clipboard (Linux paste). */
+  /**
+   * `clipboard`: also add whatever image or files are on the clipboard (Linux paste).
+   * Returns whether there was anything to add (even if it failed or was a duplicate).
+   */
   async function addMemes(files: File[], urls: string[], clipboard = false) {
-    if (stage !== "ready" || (files.length === 0 && urls.length === 0 && !clipboard)) return;
+    if (stage !== "ready" || (files.length === 0 && urls.length === 0 && !clipboard)) return false;
     importing = true;
     const added: string[] = [];
     const duplicates: string[] = [];
@@ -1330,6 +1333,7 @@
     if (duplicates.length) parts.push(duplicates.length === 1 ? `${name(duplicates[0])} is already in your library` : `${duplicates.length} were already in your library`);
     if (failures.length) parts.push(failures.length === 1 ? failures[0] : `${failures.length} couldn't be added`);
     if (parts.length) showToast({ message: parts.join(" · "), error: failures.length > 0 && added.length === 0 }, 5000);
+    return parts.length > 0;
   }
 
   /**
@@ -1369,7 +1373,14 @@
     } else if (isLinux && (!text || isCopiedFiles(text))) {
       // WebKitGTK leaves pasted images and files out of the event: read the clipboard natively.
       e.preventDefault();
-      addMemes([], [], true);
+      addMemes([], [], true).then((found) => {
+        // Only looked like copied files ("/r/memes", a path from a terminal): search for it.
+        if (!found && text && input && document.activeElement === input) {
+          input.setRangeText(text, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, "end");
+          query = input.value;
+          onInput();
+        }
+      });
     }
     // Anything else (plain text) pastes into the search box as usual.
   }
