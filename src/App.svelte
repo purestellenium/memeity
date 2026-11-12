@@ -776,11 +776,14 @@
 
   // ---------- drag a meme out into another app ----------
 
-  /** Our own drag is under way: the pane mustn't treat it as something dropped in. */
-  let draggingOut = $state(false);
+  /**
+   * Our own drags under way: the pane mustn't treat them as something dropped in. A count,
+   * not a flag: a new drag can start while the last one is still snapping back.
+   */
+  let dragsOut = $state(0);
   /** When our last drag ended. Its drop on the pane can arrive just after the OS says it's over. */
   let dragOutEndedAt = 0;
-  const ownDrag = () => draggingOut || Date.now() - dragOutEndedAt < 1000;
+  const ownDrag = () => dragsOut > 0 || Date.now() - dragOutEndedAt < 1000;
   /** Mouse pressed on a tile/row; becomes a drag once it moves a few pixels. */
   let pressed: { i: number; x: number; y: number } | null = null;
   /** A drag just started from a press: swallow the click that may follow it. */
@@ -804,9 +807,9 @@
     pressed = null;
     if (!hit) return;
     swallowClick = true;
-    draggingOut = true;
+    dragsOut++;
     invoke("drag_meme", { path: hit.path }).catch((err) => {
-      draggingOut = false;
+      dragsOut = Math.max(0, dragsOut - 1);
       error = String(err);
     });
   }
@@ -1281,10 +1284,11 @@
   const isUrl = (text: string) => /^https?:\/\/\S+$/i.test(text.trim());
 
   /**
-   * `clipboard`: also add whatever image or files are on the clipboard (Linux paste).
-   * Returns whether there was anything to add (even if it failed or was a duplicate).
+   * `clipboard`: also add whatever image or files are on the clipboard (Linux paste), or
+   * only if the `urls` couldn't be added. Returns whether there was anything to add (even
+   * if it failed or was a duplicate).
    */
-  async function addMemes(files: File[], urls: string[], clipboard = false) {
+  async function addMemes(files: File[], urls: string[], clipboard: boolean | "if-urls-fail" = false) {
     if (stage !== "ready" || (files.length === 0 && urls.length === 0 && !clipboard)) return false;
     importing = true;
     const added: string[] = [];
@@ -1316,11 +1320,15 @@
         failures.push(String(e));
       }
     }
-    if (clipboard) {
+    const urlsFailed = failures.length > 0 && added.length + duplicates.length === 0;
+    if (clipboard === true || (clipboard === "if-urls-fail" && urlsFailed)) {
       try {
-        await collect(await invoke<ImportResult>("import_clipboard"));
+        const result = await invoke<ImportResult>("import_clipboard");
+        // The link wouldn't download, but its image is on the clipboard: that's what counts.
+        if (clipboard === "if-urls-fail" && result.added.length + result.duplicates.length) failures.length = 0;
+        await collect(result);
       } catch (e) {
-        failures.push(String(e));
+        if (clipboard === true) failures.push(String(e));
       }
     }
     importing = false;
@@ -1369,8 +1377,10 @@
       addMemes(files, []);
     } else if (isUrl(text)) {
       e.preventDefault();
-      addMemes([], [text.trim()]);
-    } else if (isLinux && (!text || isCopiedFiles(text))) {
+      // Linux: Firefox's Copy Image puts the image's link next to its pixels. If the link won't
+      // download (it needs a login, hotlinking is blocked), take the pixels instead.
+      addMemes([], [text.trim()], isLinux ? "if-urls-fail" : false);
+    } else if (isLinux && (!text || isCopiedFiles(text) || text.startsWith("data:image/"))) {
       // WebKitGTK leaves pasted images and files out of the event: read the clipboard natively.
       e.preventDefault();
       addMemes([], [], true).then((found) => {
@@ -1698,12 +1708,12 @@
       // A short message from the backend (e.g. "memeity is up to date!" from the tray).
       listen<string>("notice", (e) => showToast({ message: e.payload }, 3000)),
       listen("drag-out-ended", () => {
-        draggingOut = false;
+        dragsOut = Math.max(0, dragsOut - 1);
         dragOutEndedAt = Date.now();
       }),
       listen("pane-shown", () => {
         hideNumbers();
-        draggingOut = false;
+        dragsOut = 0;
         if (editing) return; // reopened mid-edit: leave the editor as it was
         checkDuplicates();
         if (stage === "ready") checkStarPrompt();
