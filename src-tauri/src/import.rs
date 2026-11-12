@@ -233,10 +233,17 @@ pub async fn import_url(app: AppHandle, url: String) -> Result<ImportResult, Str
 
 /// Ctrl+V on Linux: WebKitGTK's paste event carries no images or files, so the pane asks
 /// for whatever is on the clipboard instead: files (copied in a file manager) or an image.
-/// Nothing usable there (text, say) adds nothing.
+/// Nothing usable there (text, say) adds nothing. `pasted_text`: only if the clipboard
+/// still holds that text, i.e. nothing new has been copied since that paste (the pane asks
+/// again only after a pasted link failed to download, which can take a while).
 #[tauri::command(async)]
-pub fn import_clipboard(app: AppHandle) -> Result<ImportResult, String> {
+pub fn import_clipboard(app: AppHandle, pasted_text: Option<String>) -> Result<ImportResult, String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("Couldn't read the clipboard: {e}"))?;
+    if let Some(pasted) = pasted_text
+        && clipboard.get_text().map(|t| t.trim().to_string()).ok() != Some(pasted.trim().to_string())
+    {
+        return Ok(ImportResult::default());
+    }
     let mut result = ImportResult::default();
     let mut failure = None;
     // An empty list (only http:// or other non-local URIs) falls through to the image.

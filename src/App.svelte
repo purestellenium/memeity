@@ -1323,7 +1323,9 @@
     const urlsFailed = failures.length > 0 && added.length + duplicates.length === 0;
     if (clipboard === true || (clipboard === "if-urls-fail" && urlsFailed)) {
       try {
-        const result = await invoke<ImportResult>("import_clipboard");
+        // Only if nothing's been copied since the paste: a failing link can take a while.
+        const pastedText = clipboard === "if-urls-fail" ? urls[0] : null;
+        const result = await invoke<ImportResult>("import_clipboard", { pastedText });
         // The link wouldn't download, but its image is on the clipboard: that's what counts.
         if (clipboard === "if-urls-fail" && result.added.length + result.duplicates.length) failures.length = 0;
         await collect(result);
