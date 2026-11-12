@@ -40,6 +40,9 @@ Grab the [latest release](https://github.com/purestellenium/memeity/releases/lat
 
 On Linux, download the `.AppImage`, make it executable (`chmod +x memeity_*.AppImage`) and run it. It needs a 2024-or-newer distro (glibc 2.38+, e.g. Ubuntu 24.04, Fedora 39, Debian 13) and a Secret Service keyring (GNOME Keyring or KWallet) to stay signed in after a reboot. Without one, you're signed out each time you restart. The shortcut, Paste to App and pane placement need X11; on Wayland, bind a desktop shortcut to the AppImage instead: launching it again opens the pane.
 
+## Acknowledgements
+Thanks to Ivie for helping me test it when it was still just in v0!
+
 ## AI Declaration
 I used AI heavily (Claude Opus 5.5) in the development of memeity- I just wanted something that worked, and so using AI was the quickest way to make this happen.
 The development process of this app was heavily supervised by me to ensure high code quality, but Rust is not a language I consider myself proficient in.
