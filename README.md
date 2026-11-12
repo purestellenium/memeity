@@ -38,6 +38,9 @@ memeity aims to fix this issue by hosting all of your memes on Google Drive - sy
 ## Installation
 Grab the [latest release](https://github.com/purestellenium/memeity/releases/latest) for your platform, and install normally following the wizard / DMG file.
 
+## Acknowledgements
+Thanks to Ivie for helping me test it when it was still just in v0!
+
 ## AI Declaration
 I used AI heavily (Claude Opus 5.5) in the development of memeity- I just wanted something that worked, and so using AI was the quickest way to make this happen.
 The development process of this app was heavily supervised by me to ensure high code quality, but Rust is not a language I consider myself proficient in.
