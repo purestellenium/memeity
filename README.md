@@ -32,13 +32,11 @@ memeity aims to fix this issue by hosting all of your memes on Google Drive - sy
 - **Quickly add memes**: drag and drop, or paste your memes into the pane to instantly process new images!
 - **Quick & powerful built-in editor**: edit and markup your memes & templates in an instant, right inside the memeity pane.
 - **Automatic updates**: memeity handles all of its own updates, so you'll never have to worry about keeping up to date again.
-- **Cross-platform**: memeity is supported on Windows, macOS and Linux, with plans to expand to a web-based client!
+- **Cross-platform**: memeity is supported on Windows and macOS, with plans to expand to Linux + a web-based client!
 - **No telemetry**: memeity never phones home - I don't need your data, silly!
 
 ## Installation
 Grab the [latest release](https://github.com/purestellenium/memeity/releases/latest) for your platform, and install normally following the wizard / DMG file.
-
-On Linux, download the `.AppImage`, make it executable (`chmod +x memeity_*.AppImage`) and run it. It needs a 2024-or-newer distro (glibc 2.38+, e.g. Ubuntu 24.04, Fedora 39, Debian 13) and a Secret Service keyring (GNOME Keyring or KWallet) to stay signed in after a reboot. Without one, you're signed out each time you restart. The shortcut, Paste to App and pane placement need X11; on Wayland, bind a desktop shortcut to the AppImage instead: launching it again opens the pane.
 
 ## Acknowledgements
 Thanks to Ivie for helping me test it when it was still just in v0!
