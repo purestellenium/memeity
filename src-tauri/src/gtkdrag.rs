@@ -6,7 +6,7 @@
 //! for the data (drag-rs#84). This is the same drag, cleaned up only once GTK says it's over.
 
 use gtk::{gdk, gdk_pixbuf, glib, prelude::*};
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -27,21 +27,38 @@ pub fn start(
     // Esc, a timeout. (`drag_drop_succeeded()` can't say: it's always false on Wayland, and
     // true after a cancel on X11.)
     let failed = Rc::new(Cell::new(false));
+    // These handlers are on the window, which may be running another drag too (one started
+    // while this one snaps back): each only answers for its own drag.
+    let ours_cell: Rc<OnceCell<gdk::DragContext>> = Rc::default();
+    let is_ours = {
+        let ours = ours_cell.clone();
+        move |context: &gdk::DragContext| ours.get() == Some(context)
+    };
 
     // The target asks for the data after the drop, so this stays connected until drag-end.
-    let data_get = window.connect_drag_data_get(move |_, _, data, _, _| {
-        data.set_uris(&[uri.as_str()]);
-    });
+    let data_get = {
+        let is_ours = is_ours.clone();
+        window.connect_drag_data_get(move |_, context, data, _, _| {
+            if is_ours(context) {
+                data.set_uris(&[uri.as_str()]);
+            }
+        })
+    };
     let fail = {
-        let failed = failed.clone();
-        window.connect_drag_failed(move |_, _, _| {
-            failed.set(true);
+        let (failed, is_ours) = (failed.clone(), is_ours.clone());
+        window.connect_drag_failed(move |_, context, _| {
+            if is_ours(context) {
+                failed.set(true);
+            }
             glib::Propagation::Proceed // the usual snap-back animation
         })
     };
     let end = {
         let handlers = handlers.clone();
-        window.connect_drag_end(move |window, _| {
+        window.connect_drag_end(move |window, context| {
+            if !is_ours(context) {
+                return;
+            }
             for id in handlers.take() {
                 window.disconnect(id);
             }
@@ -57,6 +74,7 @@ pub fn start(
         }
         return Err("GTK didn't start the drag.".into());
     };
+    let _ = ours_cell.set(context.clone());
     if let Some(pixbuf) = pixbuf(icon) {
         context.drag_set_icon_pixbuf(&pixbuf, pixbuf.width() / 2, pixbuf.height() / 2);
     }
