@@ -83,7 +83,7 @@ fn on_main_thread<T: Send + 'static>(app: &AppHandle, f: impl FnOnce() -> T + Se
     rx.recv().map_err(|_| "Couldn't send paste.".to_string())
 }
 
-/// Linux (not shipped yet): paste via the clipboard, no restore.
+/// Linux: paste via the clipboard, without restoring it yet.
 #[cfg(not(any(windows, target_os = "macos")))]
 pub fn insert(app: &AppHandle, path: &Path, _target: isize) -> Result<(), String> {
     crate::clipboard::copy(path)?;

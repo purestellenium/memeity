@@ -231,6 +231,75 @@ pub async fn import_url(app: AppHandle, url: String) -> Result<ImportResult, Str
     Ok(result)
 }
 
+/// Ctrl+V on Linux: WebKitGTK's paste event carries no images or files, so the pane asks
+/// for whatever is on the clipboard instead: files (copied in a file manager) or an image.
+/// Nothing usable there (text, say) adds nothing. `pasted_text`: only if the clipboard
+/// still holds that text, i.e. nothing new has been copied since that paste (the pane asks
+/// again only after a pasted link failed to download, which can take a while).
+#[tauri::command(async)]
+pub fn import_clipboard(app: AppHandle, pasted_text: Option<String>) -> Result<ImportResult, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("Couldn't read the clipboard: {e}"))?;
+    if let Some(pasted) = pasted_text
+        && clipboard.get_text().map(|t| t.trim().to_string()).ok() != Some(pasted.trim().to_string())
+    {
+        return Ok(ImportResult::default());
+    }
+    let mut result = ImportResult::default();
+    let mut failure = None;
+    // An empty list (only http:// or other non-local URIs) falls through to the image.
+    if let Some(files) = clipboard.get().file_list().ok().filter(|f| !f.is_empty()) {
+        for file in files {
+            match read_capped(&file).and_then(|bytes| add_bytes(&app, file.file_name().and_then(|n| n.to_str()), &bytes)) {
+                Ok(r) => {
+                    result.added.extend(r.added);
+                    result.duplicates.extend(r.duplicates);
+                }
+                Err(e) => failure = Some(e),
+            }
+        }
+    } else {
+        match clipboard.get_image() {
+            Ok(pixels) => {
+                use image::ImageEncoder;
+                if pixels.bytes.len() != pixels.width * pixels.height * 4 {
+                    return Err("The image on the clipboard is damaged.".into());
+                }
+                let mut png = Vec::new();
+                image::codecs::png::PngEncoder::new(&mut png)
+                    .write_image(&pixels.bytes, pixels.width as u32, pixels.height as u32, image::ExtendedColorType::Rgba8)
+                    .map_err(|e| format!("Couldn't read the image on the clipboard: {e}"))?;
+                result = add_bytes(&app, None, &png)?;
+            }
+            // An image that's there but won't decode (huge, damaged). Anything else means there's
+            // no image: apps that only offer text answer an image request in all sorts of ways
+            // (nothing, or "incorrect type received").
+            Err(e @ arboard::Error::ConversionFailure) => {
+                return Err(format!("Couldn't read the image on the clipboard: {e}"));
+            }
+            Err(_) => {}
+        }
+    }
+    finish(&app, &result);
+    match failure {
+        Some(e) if result.added.is_empty() && result.duplicates.is_empty() => Err(e),
+        _ => Ok(result),
+    }
+}
+
+/// Reads a file copied in a file manager, refusing anything that isn't a regular file
+/// or is over the size limit before reading it (a video, `/dev/zero`).
+fn read_capped(path: &Path) -> Result<Vec<u8>, String> {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let meta = std::fs::metadata(path).map_err(|e| format!("Couldn't read {name}: {e}"))?;
+    if !meta.is_file() {
+        return Err(format!("{name} isn't a file."));
+    }
+    if meta.len() > MAX_BYTES as u64 {
+        return Err("That file is too big (over 50 MB).".into());
+    }
+    std::fs::read(path).map_err(|e| format!("Couldn't read {name}: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
