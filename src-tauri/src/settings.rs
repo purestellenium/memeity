@@ -86,17 +86,22 @@ pub fn update_activation_policy(app: &AppHandle) {
 
 /// Switching to a regular (Dock) app makes macOS show the bundle's icon. Under
 /// `tauri dev` there is no .app bundle, so that's the generic "exec" icon; Tauri only
-/// fixes it once at startup. Re-apply memeity's logo after every switch. (Harmless in
-/// packaged builds, whose bundle icon is already the logo.)
+/// fixes it once at startup. Re-apply memeity's logo after every switch. Packaged builds
+/// are left alone: setting the image by hand would replace the bundle's Icon Composer icon
+/// and lose its dark / tinted / clear variants on macOS 26.
 #[cfg(target_os = "macos")]
 fn set_dock_icon(app: &AppHandle) {
     // Queued after the activation-policy change, on the main thread AppKit requires.
     let _ = app.run_on_main_thread(|| {
         use objc2::{AllocAnyThread, MainThreadMarker};
         use objc2_app_kit::{NSApplication, NSImage};
-        use objc2_foundation::NSData;
+        use objc2_foundation::{NSBundle, NSData};
 
         let Some(mtm) = MainThreadMarker::new() else { return };
+        let packaged = NSBundle::mainBundle().bundlePath().to_string().ends_with(".app");
+        if packaged {
+            return;
+        }
         let data = NSData::with_bytes(include_bytes!("../icons/icon.png"));
         let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else { return };
         unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };

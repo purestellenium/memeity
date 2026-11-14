@@ -85,7 +85,7 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSWindow", "NSView", "NSResponder", "NSColor", "objc2-quartz-core"] }
 # Rounded pane corners (the content view's layer).
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
-objc2-foundation = { version = "0.3", features = ["NSData"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSBundle", "NSString"] }
 
 # Debug info is most of a dev build's size on disk. Keep just enough of it for file:line
 # in panics and backtraces.
