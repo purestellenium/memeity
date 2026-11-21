@@ -1,4 +1,4 @@
-# Builds installers for Windows, macOS (Apple Silicon + Intel) and Linux when a version tag
+# Builds installers for Windows, macOS (Apple Silicon + Intel) and Linux (x64 + ARM64) when a version tag
 # like v0.1.0 is pushed, and attaches them to a DRAFT GitHub Release. Review the draft,
 # then publish it: only published releases are offered by the in-app updater.
 #
@@ -51,7 +51,8 @@ jobs:
                 "- **Windows on ARM** (e.g. Snapdragon laptops): `memeity_*_arm64-setup.exe`",
                 "- **Mac (Apple Silicon):** `memeity_*_aarch64.dmg`",
                 "- **Mac (Intel):** `memeity_*_x64.dmg` (no text recognition: search by name, plus text read on your other devices)",
-                "- **Linux:** `memeity_*_amd64.AppImage` (Ubuntu 24.04, Fedora 39, Debian 13 or newer): make it executable, then run it",
+                "- **Linux:** `memeity_*_amd64.AppImage` (Ubuntu 24.04, Fedora 39, Debian 13 or newer): make it executable, then run it. It updates itself. Or install `memeity_*_amd64.deb` (Debian, Ubuntu) / `memeity-*.x86_64.rpm` (Fedora, openSUSE), updated by installing the next release's package",
+                "- **Linux on ARM:** `memeity_*_aarch64.AppImage`, `memeity_*_arm64.deb` or `memeity-*.aarch64.rpm`",
                 "",
                 "The Mac builds are signed and notarized by Apple. The Windows builds aren't code-signed, so Windows may show \"Windows protected your PC\": click **More info → Run anyway**.",
               ].join("\n"),
@@ -76,9 +77,14 @@ jobs:
           # leaves out text recognition (the `ocr` feature). See src-tauri/src/ocr.rs.
           - platform: macos-latest
             args: --target x86_64-apple-darwin -- --no-default-features
-          # Linux AppImage. Built on 24.04: ONNX Runtime's prebuilt library (OCR) needs
-          # glibc 2.38+, so it runs on distros at least that new.
+          # Linux AppImage, .deb and .rpm (tauri.linux.conf.json). Built on 24.04: ONNX
+          # Runtime's prebuilt library (OCR) needs glibc 2.38+, so it runs on distros at
+          # least that new.
           - platform: ubuntu-24.04
+            args: ""
+          # Linux on ARM64, natively on an ARM runner (ONNX Runtime ships ARM64 Linux
+          # binaries too, so text recognition stays in).
+          - platform: ubuntu-24.04-arm
             args: ""
     runs-on: ${{ matrix.platform }}
     steps:

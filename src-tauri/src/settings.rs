@@ -111,6 +111,36 @@ fn set_dock_icon(app: &AppHandle) {
 #[cfg(not(target_os = "macos"))]
 pub fn update_activation_policy(_app: &AppHandle) {}
 
+// ---------- Linux ----------
+
+/// A Linux Wayland session. Wayland doesn't let apps listen for global shortcuts or type
+/// into other apps, so the shortcut is set up in the desktop's own settings (running
+/// `launch_command`) and "Paste to App" copies instead.
+pub fn wayland() -> bool {
+    cfg!(target_os = "linux")
+        && (std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|t| t.eq_ignore_ascii_case("wayland")))
+}
+
+/// Linux: the command that opens memeity (or, while it's running, toggles its search
+/// pane), for a custom shortcut in the desktop's keyboard settings.
+pub fn launch_command() -> Option<String> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    // An AppImage runs from a temporary mount; $APPIMAGE is the file itself.
+    let path = std::env::var_os("APPIMAGE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())?;
+    if path == std::path::Path::new("/usr/bin/memeity") {
+        return Some("memeity".into()); // installed from the .deb / .rpm
+    }
+    let path = path.to_string_lossy();
+    let plain = path.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+~".contains(c));
+    // Shell-quoted, for desktops that run the command through a shell.
+    Some(if plain { path.into_owned() } else { format!("'{}'", path.replace('\'', r"'\''")) })
+}
+
 // ---------- shortcut ----------
 
 /// The shortcut currently opening the pane.
@@ -307,6 +337,9 @@ pub fn reset_shortcut(app: AppHandle) -> Result<Status, String> {
 
 /// What Enter / click does in the pane. Defaults to pasting into the app you were in.
 pub fn primary_action(app: &AppHandle) -> &'static str {
+    if wayland() {
+        return "copy"; // memeity can't paste into other apps there
+    }
     match config(app).primary_action.as_deref() {
         Some("copy") => "copy",
         _ => "paste",

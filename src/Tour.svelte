@@ -8,12 +8,15 @@
   let {
     shortcut,
     pasteFirst,
+    canPaste = true,
     onDone,
   }: {
     /** The shortcut that opens the pane, e.g. "Ctrl+Alt+M". */
     shortcut: string;
     /** Enter pastes (true) or copies (false); see Settings > General. */
     pasteFirst: boolean;
+    /** False on Linux Wayland, where memeity can only copy. */
+    canPaste?: boolean;
     onDone: () => void;
   } = $props();
 
@@ -47,7 +50,7 @@
       body: `Pick a meme with the arrow keys or the mouse. ${pasteFirst ? "Enter pastes it into the app you were just in" : "Enter copies it to your clipboard"}.`,
       keys: [
         { caps: ["↵"], label: pasteFirst ? "Paste" : "Copy" },
-        { caps: ["Shift", "↵"], label: pasteFirst ? "Copy" : "Paste" },
+        ...(canPaste ? [{ caps: ["Shift", "↵"], label: pasteFirst ? "Copy" : "Paste" }] : []),
         { caps: [MOD, "1–9"], label: "Quick pick" },
       ],
     },
@@ -79,9 +82,13 @@
     {
       target: "settings",
       title: "You're all set",
-      body: "Open memeity from anywhere with your shortcut. Themes, the shortcut itself and what Enter does are in Settings.",
+      // Linux Wayland (no pasting there either): the shortcut is set in the desktop's own
+      // settings, which Settings > General explains.
+      body: canPaste
+        ? "Open memeity from anywhere with your shortcut. Themes, the shortcut itself and what Enter does are in Settings."
+        : "Settings > General shows how to open memeity with a shortcut from anywhere. Themes and more are there too.",
       keys: [
-        { caps: shortcut.split("+"), label: "Open memeity" },
+        ...(canPaste ? [{ caps: shortcut.split("+"), label: "Open memeity" }] : []),
         { caps: [MOD, "/"], label: "All shortcuts" },
       ],
     },

@@ -9,7 +9,15 @@ on:
 
 jobs:
   appimage:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
 
@@ -32,10 +40,10 @@ jobs:
       - run: npm ci
 
       - name: Build AppImage
-        run: ./node_modules/.bin/tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        run: ./node_modules/.bin/tauri build --bundles appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: memeity-appimage
+          name: memeity-appimage-${{ matrix.arch }}
           path: src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error

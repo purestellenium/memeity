@@ -83,10 +83,15 @@ fn on_main_thread<T: Send + 'static>(app: &AppHandle, f: impl FnOnce() -> T + Se
     rx.recv().map_err(|_| "Couldn't send paste.".to_string())
 }
 
-/// Linux: paste via the clipboard, without restoring it yet.
+/// Linux: paste via the clipboard, without restoring it yet. Under Wayland, apps can't
+/// type into other apps, so it's a plain copy there (Settings says so).
 #[cfg(not(any(windows, target_os = "macos")))]
 pub fn insert(app: &AppHandle, path: &Path, _target: isize) -> Result<(), String> {
     crate::clipboard::copy(path)?;
+    if crate::settings::wayland() {
+        crate::hide_pane_after_copy(app);
+        return Ok(());
+    }
     crate::hide_pane(app);
     std::thread::sleep(FOCUS_SETTLE);
     send_paste()

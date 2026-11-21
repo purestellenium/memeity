@@ -49,6 +49,8 @@
     theme: ThemeChoice | null;
     /** The first-run feature tour is due (see Tour.svelte). */
     tour: boolean;
+    /** Linux Wayland: memeity can't paste into other apps, only copy. */
+    wayland: boolean;
   };
   type OcrStatus = {
     state: "idle" | "preparing" | "reading" | "unavailable";
@@ -1242,7 +1244,7 @@
         title: "Use a meme",
         rows: [
           ["↵", pastes ? "Paste into the app you were in" : "Copy to the clipboard"],
-          ["Shift ↵", pastes ? "Copy to the clipboard" : "Paste into the app you were in"],
+          ...(status?.wayland ? [] : [["Shift ↵", pastes ? "Copy to the clipboard" : "Paste into the app you were in"]]),
           [`${MOD} 1–9`, "Use one of the first nine (hold " + MOD + " to see the numbers)"],
           ["Drag", "Drop a meme straight into another app"],
         ],
@@ -1620,6 +1622,8 @@
 
   // Enter / click = the primary action, Shift = the other one (swappable in Settings).
   const pasteFirst = $derived(status?.primary_action !== "copy");
+  /** Pasting into the app you were in works (not on Linux Wayland, where it copies). */
+  const canPaste = $derived(!status?.wayland);
   const primary = (i = selected) => (pasteFirst ? insert(i) : copy(i));
   const secondary = (i = selected) => (pasteFirst ? copy(i) : insert(i));
   const pasteAction = { label: "Paste to App", danger: false, run: (i: number) => insert(i) };
@@ -2575,9 +2579,11 @@
         <button class="action primary-action" onclick={() => shareGif(pasteFirst)} disabled={busy}>
           {pasteFirst ? "Paste to App" : "Copy to Clipboard"} <kbd>↵</kbd>
         </button>
-        <button class="action" onclick={() => shareGif(!pasteFirst)} disabled={busy}>
-          {pasteFirst ? "Copy" : "Paste"} <kbd>Shift</kbd><kbd>↵</kbd>
-        </button>
+        {#if canPaste}
+          <button class="action" onclick={() => shareGif(!pasteFirst)} disabled={busy}>
+            {pasteFirst ? "Copy" : "Paste"} <kbd>Shift</kbd><kbd>↵</kbd>
+          </button>
+        {/if}
         <span class="divider"></span>
         <button class="action" onclick={() => saveGif()} disabled={busy}>Save <kbd>{MOD}</kbd><kbd>S</kbd></button>
       {/if}
@@ -2648,9 +2654,11 @@
             Copy to Clipboard <kbd>↵</kbd>
           {/if}
         </button>
-        <button class="action" onclick={() => secondary()}>
-          {pasteFirst ? "Copy" : "Paste"} <kbd>Shift</kbd><kbd>↵</kbd>
-        </button>
+        {#if canPaste}
+          <button class="action" onclick={() => secondary()}>
+            {pasteFirst ? "Copy" : "Paste"} <kbd>Shift</kbd><kbd>↵</kbd>
+          </button>
+        {/if}
         <span class="divider"></span>
         <button class="action" onclick={openActions}>Actions <kbd>{MOD}</kbd><kbd>K</kbd></button>
       {/if}
@@ -2667,7 +2675,7 @@
   {/if}
 
   {#if stage === "ready" && status?.tour && !editing}
-    <Tour shortcut={status.shortcut} {pasteFirst} onDone={finishTour} />
+    <Tour shortcut={status.shortcut} {pasteFirst} {canPaste} onDone={finishTour} />
   {/if}
 
   {#if editing && Editor}
