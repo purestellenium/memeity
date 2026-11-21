@@ -4,6 +4,7 @@
   import { onMount, tick } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
   import Setup from "./Setup.svelte";
+  import Tour from "./Tour.svelte";
   import { applyTheme, type ThemeChoice } from "./themes";
   import logo from "./assets/logo.png";
 
@@ -46,6 +47,8 @@
     primary_action: "paste" | "copy";
     /** Colour theme (Settings > Appearance). */
     theme: ThemeChoice | null;
+    /** The first-run feature tour is due (see Tour.svelte). */
+    tour: boolean;
   };
   type OcrStatus = {
     state: "idle" | "preparing" | "reading" | "unavailable";
@@ -84,6 +87,31 @@
     if (status) applyTheme(status.theme);
   });
   const current = $derived(hits[selected]);
+
+  // ---------- Tenor GIF search ----------
+
+  /** A Tenor result (see gifs.rs). `preview` is small and animated, `still` its first frame. */
+  type Gif = { id: string; title: string; url: string; preview: string; still: string; width: number; height: number };
+  type GifPage = { gifs: Gif[]; next: string | null };
+  /** `!gif cats` (or `!tenor` / `!t`) searches Tenor instead of the library. */
+  const GIF_BANG = /^!(?:gif|tenor|t)(?:\s|$)/i;
+  const gifMode = $derived(GIF_BANG.test(query));
+  const gifQuery = $derived(query.replace(GIF_BANG, "").trim());
+  /** Few local results: offer Tenor in the footer too. */
+  const FEW_RESULTS = 6;
+  let gifs = $state<Gif[]>([]);
+  let gifNext: string | null = null;
+  let gifSel = $state(0);
+  let gifHover = $state(-1);
+  let gifLoading = $state(false);
+  /** The current query's first page has arrived (or failed). */
+  let gifSearched = $state(false);
+  let gifError = $state<string | null>(null);
+  let gifGrid: HTMLDivElement | undefined = $state();
+  let gifSeq = 0;
+  let gifMoreSeq = -1;
+  let gifTimer: ReturnType<typeof setTimeout> | undefined;
+  const currentGif = $derived(gifMode ? gifs[gifSel] : undefined);
 
   /**
    * Small cached thumbnail (see thumbs.rs), or the original for animated memes in play
@@ -1247,6 +1275,9 @@
         title: "Search and more",
         rows: [
           ["#tag", "Only memes with that tag (Tab completes it)"],
+          ["!gif", "Search Tenor for GIFs instead"],
+          [`${MOD} G`, "Search Tenor for what you typed (again to go back)"],
+          [`${MOD} S`, "Save the selected Tenor GIF to your memes"],
           [`${MOD} V`, "Add a copied image or link as a meme"],
           [`${MOD} L`, "Switch between grid and list"],
           [`${MOD} ,`, "Settings"],
@@ -1424,8 +1455,148 @@
     error = null;
     confirmDelete = null;
     menu = null;
-    if (stage === "ready") runSearch(true);
+    if (stage !== "ready") return;
+    clearTimeout(gifTimer);
+    if (gifMode) {
+      // Wait for a pause in typing: every Tenor search is a request over the network.
+      gifLoading = true;
+      gifTimer = setTimeout(runGifSearch, 300);
+    } else {
+      gifSeq++; // drop any Tenor search still in flight
+      gifLoading = false;
+      runSearch(true);
+    }
   }
+
+  /** Switches the search box to Tenor, searching for `q` (default: what's typed now). */
+  function searchTenor(q = query) {
+    query = `!gif ${q.replace(/#/g, "").trim()}`;
+    onInput();
+    input?.focus();
+  }
+
+  /** Back to searching the library, keeping the words. */
+  function leaveGifs() {
+    query = gifQuery;
+    onInput();
+    input?.focus();
+  }
+
+  async function runGifSearch() {
+    const seq = ++gifSeq;
+    gifLoading = true;
+    gifSearched = false;
+    gifError = null;
+    try {
+      const page = await invoke<GifPage>("gif_search", { query: gifQuery, pos: null });
+      if (seq !== gifSeq) return;
+      gifs = page.gifs;
+      gifNext = page.next;
+      gifSel = 0;
+      gifGrid?.scrollTo({ top: 0 });
+    } catch (e) {
+      if (seq !== gifSeq) return;
+      gifs = [];
+      gifNext = null;
+      gifError = String(e);
+    } finally {
+      if (seq === gifSeq) {
+        gifLoading = false;
+        gifSearched = true;
+      }
+    }
+    await tick();
+    maybeMoreGifs();
+  }
+
+  async function moreGifs() {
+    const seq = gifSeq;
+    if (!gifNext || gifMoreSeq === seq) return;
+    gifMoreSeq = seq;
+    let grew = false;
+    try {
+      const page = await invoke<GifPage>("gif_search", { query: gifQuery, pos: gifNext });
+      if (seq !== gifSeq) return;
+      const seen = new Set(gifs.map((g) => g.id));
+      const fresh = page.gifs.filter((g) => !seen.has(g.id));
+      grew = fresh.length > 0;
+      gifs = [...gifs, ...fresh];
+      gifNext = grew ? page.next : null; // a page of repeats: Tenor has run out
+    } catch (e) {
+      if (seq === gifSeq) error = `Couldn't load more GIFs: ${e}`;
+    } finally {
+      if (gifMoreSeq === seq) gifMoreSeq = -1;
+    }
+    if (grew) {
+      await tick();
+      maybeMoreGifs();
+    }
+  }
+
+  function maybeMoreGifs() {
+    const el = gifGrid;
+    if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - LOAD_AHEAD_PX) moreGifs();
+  }
+
+  const gifRatio = (g: Gif) => Math.min(MAX_RATIO, Math.max(MIN_RATIO, g.height / g.width));
+
+  /** Same shortest-column masonry as the library grid; `top` (in column widths) is for arrow keys. */
+  const gifLayout = $derived.by(() => {
+    const cols: number[][] = Array.from({ length: COLS }, () => []);
+    const heights = new Array(COLS).fill(0);
+    const col: number[] = [];
+    const top: number[] = [];
+    gifs.forEach((g, i) => {
+      const c = heights.indexOf(Math.min(...heights));
+      col[i] = c;
+      top[i] = heights[c];
+      cols[c].push(i);
+      heights[c] += gifRatio(g) + GAP_UNITS;
+    });
+    return { cols, col, top };
+  });
+
+  async function selectGif(i: number) {
+    if (!gifs.length) return;
+    gifSel = Math.max(0, Math.min(gifs.length - 1, i));
+    await tick();
+    gifGrid?.querySelector(`[data-g="${gifSel}"]`)?.scrollIntoView({ block: "nearest" });
+    if (gifSel >= gifs.length - COLS * 4) moreGifs();
+  }
+
+  function moveGif(dir: "up" | "down" | "left" | "right", steps = 1) {
+    if (!gifs.length) return;
+    const { cols, col, top } = gifLayout;
+    const c = col[gifSel];
+    if (dir === "up" || dir === "down") {
+      const column = cols[c];
+      const r = column.indexOf(gifSel) + (dir === "down" ? steps : -steps);
+      selectGif(column[Math.max(0, Math.min(column.length - 1, r))]);
+      return;
+    }
+    const next = cols[c + (dir === "right" ? 1 : -1)];
+    if (!next?.length) return;
+    // The tile in the next column nearest the same height.
+    const y = top[gifSel];
+    selectGif(next.reduce((best, j) => (Math.abs(top[j] - y) < Math.abs(top[best] - y) ? j : best), next[0]));
+  }
+
+  /** Pastes or copies a Tenor GIF without adding it to the library. */
+  const shareGif = (paste: boolean, i = gifSel) =>
+    act(async () => {
+      const g = gifs[i];
+      if (g) await invoke("gif_share", { url: g.url, title: g.title, paste }); // hides the pane
+    });
+
+  /** Adds a Tenor GIF to the library (and so to Drive and every device). */
+  const saveGif = (i = gifSel) =>
+    act(async () => {
+      const g = gifs[i];
+      if (!g) return;
+      const r = await invoke<ImportResult>("gif_save", { url: g.url, title: g.title });
+      const name = (r.added[0] ?? r.duplicates[0] ?? g.title).split("/").pop();
+      showToast({ message: r.added.length ? `Added ${name} to your library` : `${name} is already in your library` });
+    });
 
   // ---------- actions menu ----------
 
@@ -1631,6 +1802,7 @@
     if (key === "Escape") {
       e.preventDefault();
       if (confirmDelete) confirmDelete = null;
+      else if (gifMode && stage === "ready") leaveGifs();
       else if (showDetails) toggleDetails(false);
       else if (marked.size) {
         marked.clear();
@@ -1661,6 +1833,29 @@
     } else if (stage === "ready") {
       if (confirmDelete) {
         if (key === "Enter") { e.preventDefault(); doDelete(confirmDelete); }
+        return;
+      }
+      // Ctrl+G: search Tenor for what's typed (or go back to the library).
+      if (ctrl && key.toLowerCase() === "g") { e.preventDefault(); if (gifMode) leaveGifs(); else searchTenor(); return; }
+      if (gifMode) {
+        // Library shortcuts (pin, tags, edit...) don't apply to Tenor results.
+        if (ctrl && key.toLowerCase() === "s") { e.preventDefault(); saveGif(); return; }
+        switch (key) {
+          case "ArrowRight": e.preventDefault(); moveGif("right"); break;
+          case "ArrowLeft":  e.preventDefault(); moveGif("left"); break;
+          case "ArrowDown":  e.preventDefault(); moveGif("down"); break;
+          case "ArrowUp":    e.preventDefault(); moveGif("up"); break;
+          case "PageDown":   e.preventDefault(); moveGif("down", 3); break;
+          case "PageUp":     e.preventDefault(); moveGif("up", 3); break;
+          case "Enter":      e.preventDefault(); shareGif(e.shiftKey ? !pasteFirst : pasteFirst); break;
+          default: if (ctrl && key.length === 1 && !"acvxyz".includes(key.toLowerCase())) e.preventDefault();
+        }
+        return;
+      }
+      // Nothing in the library matches: Enter looks on Tenor instead.
+      if (key === "Enter" && !hits.length && query.trim() && !e.shiftKey) {
+        e.preventDefault();
+        searchTenor();
         return;
       }
       if (ctrl && /^Digit[1-9]$/.test(e.code)) {
@@ -1700,6 +1895,13 @@
           break;
       }
     }
+  }
+
+  /** The tour was finished or skipped: don't show it again (Settings > About replays it). */
+  function finishTour() {
+    if (status) status = { ...status, tour: false };
+    invoke("finish_tour").catch((e) => (error = String(e)));
+    input?.focus();
   }
 
   // ---------- lifecycle ----------
@@ -1868,13 +2070,18 @@
 <main class:pane={stage === "ready"} class:mac={isMac}>
   <!-- Screen readers hear how many memes match as you type. -->
   {#if stage === "ready"}
-    <p class="sr-only" aria-live="polite">{query.trim() ? `${total} ${total === 1 ? "meme" : "memes"}` : ""}</p>
+    <p class="sr-only" aria-live="polite">
+      {gifMode
+        ? gifSearched ? `${gifs.length} GIFs from Tenor` : ""
+        : query.trim() ? `${total} ${total === 1 ? "meme" : "memes"}` : ""}
+    </p>
   {/if}
   {#if stage === "ready"}
     <header>
       <input
         bind:this={input}
         bind:value={query}
+        data-tour="search"
         oninput={onInput}
         onpaste={onPaste}
         aria-label="Search memes"
@@ -1882,7 +2089,7 @@
         aria-expanded="true"
         aria-autocomplete="list"
         aria-controls="results"
-        aria-activedescendant={current ? `meme-${selected}` : undefined}
+        aria-activedescendant={gifMode ? (currentGif ? `gif-${gifSel}` : undefined) : current ? `meme-${selected}` : undefined}
         placeholder={status?.count ? `Search ${status.count} memes by name, text or #tag…` : "Search memes…"}
         spellcheck="false"
         autocomplete="off"
@@ -1890,6 +2097,7 @@
       {#if stage === "ready" && status?.drive_folder}
         <button
           class="badge"
+          data-tour="folder"
           title={`Open ${status.local_folder ?? "the meme folder"}`}
           onmousedown={(e) => e.preventDefault()}
           onclick={() => invoke("open_folder")}
@@ -1920,6 +2128,7 @@
       <button
         class="icon-btn"
         title={`Settings (${MOD}${isMac ? "" : "+"},)`}
+        data-tour="settings"
         aria-label="Settings"
         onmousedown={(e) => e.preventDefault()}
         onclick={() => invoke("open_settings")}
@@ -1990,7 +2199,7 @@
     </div>
   {/if}
 
-  <section class="body">
+  <section class="body" data-tour="results">
     {#if !status}
       <div></div>
     {:else if stage === "setup"}
@@ -2025,7 +2234,71 @@
         {/if}
       </div>
     {:else if stage === "ready"}
-      {#if status.count === 0}
+      {#if gifMode}
+        {#if gifError && !gifs.length}
+          <div class="empty">
+            <h2>Couldn't search Tenor</h2>
+            <p>{gifError}</p>
+            <button class="btn outline" onclick={runGifSearch}>Try again</button>
+          </div>
+        {:else if !gifs.length && !gifSearched}
+          <div class="empty">
+            <p>{gifQuery ? `Searching Tenor for “${gifQuery}”…` : "Loading trending GIFs from Tenor…"}</p>
+          </div>
+        {:else if !gifs.length}
+          <div class="empty">
+            <h2>No GIFs found</h2>
+            <p>Tenor has nothing for “{gifQuery}”.</p>
+          </div>
+        {:else}
+          <div
+            class="masonry"
+            class:stale={gifLoading}
+            id="results"
+            role="listbox"
+            aria-label="GIFs from Tenor"
+            bind:this={gifGrid}
+            onscroll={maybeMoreGifs}
+          >
+            {#each gifLayout.cols as column, c (c)}
+              <div class="col">
+                {#each column as i (gifs[i].id)}
+                  {@const g = gifs[i]}
+                  {@const playing = i === gifSel || (i === gifHover && !reduceMotion)}
+                  <button
+                    class="tile"
+                    class:selected={i === gifSel}
+                    data-g={i}
+                    role="option"
+                    id={`gif-${i}`}
+                    aria-selected={i === gifSel}
+                    aria-label={g.title}
+                    tabindex="-1"
+                    style:aspect-ratio="1 / {gifRatio(g)}"
+                    title={g.title}
+                    onmousedown={(e) => e.preventDefault()}
+                    onclick={(e) => {
+                      gifSel = i;
+                      shareGif(e.shiftKey ? !pasteFirst : pasteFirst, i);
+                    }}
+                    onmouseenter={() => (gifHover = i)}
+                    onmouseleave={() => (gifHover = -1)}
+                  >
+                    <img
+                      src={playing ? g.preview : g.still}
+                      alt={g.title}
+                      loading="lazy"
+                      decoding="async"
+                      draggable="false"
+                      referrerpolicy="no-referrer"
+                    />
+                  </button>
+                {/each}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      {:else if status.count === 0}
         <div class="empty">
           <div class="empty-icon">{@render folderIcon()}</div>
           {#if status.sync.state === "syncing"}
@@ -2041,6 +2314,9 @@
         <div class="empty">
           <h2>No results</h2>
           <p>Nothing matches “{query}”.</p>
+          <button class="btn outline" onclick={() => searchTenor()}>
+            Search Tenor for GIFs <kbd>↵</kbd>
+          </button>
         </div>
       {:else if view === "list"}
         <div class="list-view">
@@ -2197,7 +2473,7 @@
       {/if}
     {/if}
 
-    {#if stage === "ready" && showDetails && current}
+    {#if stage === "ready" && showDetails && current && !gifMode}
       <div class="details">
         <div class="preview">
           <img src={`${convertFileSrc(current.path, "thumb")}?full=1&v=${current.version}`} alt={current.name} draggable="false" />
@@ -2280,7 +2556,7 @@
     {/if}
   </section>
 
-  <footer>
+  <footer data-tour="footer">
     {#if confirmDelete}
       <span class="danger-text">
         Delete {confirmDelete.length === 1 ? `“${confirmDelete[0].name}”` : `${confirmDelete.length} memes`} from Drive and every device?
@@ -2290,6 +2566,21 @@
       <button class="btn destructive sm" onclick={() => confirmDelete && doDelete(confirmDelete)} disabled={busy}>
         Delete <kbd>↵</kbd>
       </button>
+    {:else if stage === "ready" && gifMode}
+      <span class="status muted">GIFs from Tenor</span>
+      <span class="spacer"></span>
+      <button class="action" onclick={leaveGifs}>Back to memes <kbd>Esc</kbd></button>
+      {#if currentGif}
+        <span class="divider"></span>
+        <button class="action primary-action" onclick={() => shareGif(pasteFirst)} disabled={busy}>
+          {pasteFirst ? "Paste to App" : "Copy to Clipboard"} <kbd>↵</kbd>
+        </button>
+        <button class="action" onclick={() => shareGif(!pasteFirst)} disabled={busy}>
+          {pasteFirst ? "Copy" : "Paste"} <kbd>Shift</kbd><kbd>↵</kbd>
+        </button>
+        <span class="divider"></span>
+        <button class="action" onclick={() => saveGif()} disabled={busy}>Save <kbd>{MOD}</kbd><kbd>S</kbd></button>
+      {/if}
     {:else if stage === "ready" && marked.size}
       <span class="status marked-count">{marked.size} selected</span>
       <span class="spacer"></span>
@@ -2335,6 +2626,11 @@
       {/if}
       <span class="spacer"></span>
 
+      {#if stage === "ready" && query.trim() && total <= FEW_RESULTS}
+        <!-- Few or no matches: maybe it's not in the library yet. -->
+        <button class="action" onclick={() => searchTenor()}>Search Tenor <kbd>{MOD}</kbd><kbd>G</kbd></button>
+        {#if current}<span class="divider"></span>{/if}
+      {/if}
       {#if stage === "ready" && current}
         <button class="action primary-action" onclick={() => primary()}>
           {#if pasteFirst}
@@ -2368,6 +2664,10 @@
         <span>Images, GIFs, or links to them</span>
       </div>
     </div>
+  {/if}
+
+  {#if stage === "ready" && status?.tour && !editing}
+    <Tour shortcut={status.shortcut} {pasteFirst} onDone={finishTour} />
   {/if}
 
   {#if editing && Editor}
@@ -3162,6 +3462,11 @@
 
   .tile.selected {
     outline-color: var(--ring);
+  }
+
+  /* A new Tenor search is loading: dim the old results until it lands. */
+  .masonry.stale {
+    opacity: 0.6;
   }
 
   .tile.doomed {
