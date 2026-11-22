@@ -51,8 +51,8 @@ jobs:
                 "- **Windows on ARM** (e.g. Snapdragon laptops): `memeity_*_arm64-setup.exe`",
                 "- **Mac (Apple Silicon):** `memeity_*_aarch64.dmg`",
                 "- **Mac (Intel):** `memeity_*_x64.dmg` (no text recognition: search by name, plus text read on your other devices)",
-                "- **Linux:** `memeity_*_amd64.AppImage` (Ubuntu 24.04, Fedora 39, Debian 13 or newer): make it executable, then run it. It updates itself. Or install `memeity_*_amd64.deb` (Debian, Ubuntu) / `memeity-*.x86_64.rpm` (Fedora, openSUSE), updated by installing the next release's package",
-                "- **Linux on ARM:** `memeity_*_aarch64.AppImage`, `memeity_*_arm64.deb` or `memeity-*.aarch64.rpm`",
+                "- **Linux:** `memeity_*_amd64.AppImage` (Ubuntu 24.04, Fedora 39, Debian 13 or newer): make it executable, then run it. It updates itself. Or install `memeity_*_amd64.deb` (Debian, Ubuntu) / `memeity-*.x86_64.rpm` (Fedora, openSUSE), updated by installing the next release's package. Other distros (Arch, ...): `memeity_*_linux_x86_64.tar.gz`, extracted into `/usr/local` (needs webkit2gtk-4.1 and libayatana-appindicator installed)",
+                "- **Linux on ARM:** `memeity_*_aarch64.AppImage`, `memeity_*_arm64.deb`, `memeity-*.aarch64.rpm` or `memeity_*_linux_aarch64.tar.gz`",
                 "",
                 "The Mac builds are signed and notarized by Apple. The Windows builds aren't code-signed, so Windows may show \"Windows protected your PC\": click **More info → Run anyway**.",
               ].join("\n"),
@@ -183,6 +183,26 @@ jobs:
           # Windows ships only the setup.exe (no MSI): point updates at it.
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+      # A .tar.gz of what the .deb installs (binary, resources, desktop file, icons), for
+      # distros with neither .deb nor .rpm (Arch, NixOS, ...). Needs webkit2gtk-4.1 and the
+      # appindicator library from the distro. Extract it into / or /usr/local.
+      - name: Make the Linux tarball
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          deb=$(ls src-tauri/target/release/bundle/deb/*.deb)
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          arch=$(uname -m)
+          name="memeity_${version}_linux_${arch}"
+          mkdir -p "$RUNNER_TEMP/$name"
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/$name"
+          tar -czf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP/$name" .
+          tar -tzf "$RUNNER_TEMP/$name.tar.gz" | grep -q 'usr/bin/'
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/$name.tar.gz" --clobber
 
       # Tauri notarizes the .app inside the DMG but not the DMG itself, which Gatekeeper
       # then rejects as "Unnotarized Developer ID". Notarize + staple it and re-upload.
