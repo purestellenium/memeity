@@ -1381,10 +1381,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 10px 16px;
   }
 
+  /* Text keeps a readable width; a wide control drops below it instead of squeezing it. */
   .row > div:first-child {
+    flex: 1 1 220px;
     min-width: 0;
   }
 
