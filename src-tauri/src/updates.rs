@@ -58,6 +58,16 @@ pub fn refresh_tray_item(app: &AppHandle) {
 
 /// Downloads, verifies and installs the latest version, then restarts memeity.
 pub async fn install(app: &AppHandle) -> Result<(), String> {
+    // Linux: the updater only replaces AppImages. A .deb / .rpm install is updated by
+    // installing the new package, so open the release to download it.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("APPIMAGE").is_none() {
+        use tauri_plugin_opener::OpenerExt;
+        return app
+            .opener()
+            .open_url("https://github.com/purestellenium/memeity/releases/latest", None::<&str>)
+            .map_err(|e| e.to_string());
+    }
     let update = app
         .updater()
         .map_err(|e| e.to_string())?

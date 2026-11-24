@@ -1,15 +1,29 @@
 # Builds a Linux AppImage of any branch by hand (Actions > AppImage > Run workflow) and
 # attaches it to the run, to try a change on Linux or check that bundling still works
-# before a release. Needs no secrets: without MEMEITY_GOOGLE_CLIENT_ID/SECRET the app asks
-# for your own Google OAuth client, and it's built without updater artifacts.
+# before a release. By default it uses no secrets: without MEMEITY_GOOGLE_CLIENT_ID/SECRET the
+# app asks for your own Google OAuth client. Tick "with_google_client" to bake the built-in
+# one in for testing sign-in; the artifact then contains the secret. No updater artifacts.
 name: AppImage
 
 on:
   workflow_dispatch:
+    inputs:
+      with_google_client:
+        description: Bake in the built-in Google sign-in client (the secret ends up inside the downloadable artifact)
+        type: boolean
+        default: false
 
 jobs:
   appimage:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
 
@@ -31,11 +45,24 @@ jobs:
 
       - run: npm ci
 
+      # Only set when ticked: build.rs would bake in empty values, not fall back to asking.
+      - name: Use the built-in Google client
+        if: ${{ inputs.with_google_client }}
+        shell: bash
+        env:
+          CLIENT_ID: ${{ secrets.MEMEITY_GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.MEMEITY_GOOGLE_CLIENT_SECRET }}
+        run: |
+          echo "::add-mask::$CLIENT_ID"
+          echo "::add-mask::$CLIENT_SECRET"
+          echo "MEMEITY_GOOGLE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "MEMEITY_GOOGLE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
+
       - name: Build AppImage
-        run: ./node_modules/.bin/tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        run: ./node_modules/.bin/tauri build --bundles appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: memeity-appimage
+          name: memeity-appimage-${{ matrix.arch }}
           path: src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error

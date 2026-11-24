@@ -173,6 +173,10 @@ struct Status {
     theme: Option<config::Theme>,
     /// The first-run feature tour should play in the pane.
     tour: bool,
+    /// Linux Wayland: no global shortcut or pasting into other apps (settings::wayland).
+    wayland: bool,
+    /// Linux: the command a desktop shortcut can run to open the pane.
+    launch_command: Option<String>,
     version: String,
 }
 
@@ -302,6 +306,8 @@ fn status(app: &AppHandle) -> Status {
         scroll_reset_secs: settings::scroll_reset_secs(app),
         theme: config(app).theme,
         tour: config(app).toured == Some(false),
+        wayland: settings::wayland(),
+        launch_command: settings::launch_command(),
         version: app.package_info().version.to_string(),
     }
 }
@@ -1417,6 +1423,20 @@ fn open_setup_link(app: AppHandle, url: String) -> Result<(), String> {
 
 // ---------- setup ----------
 
+/// Linux: run the window through X11 (XWayland on a Wayland desktop), where memeity can
+/// open the pane where it belongs, keep it on top and give it focus; Wayland lets apps do
+/// none of that. And WebKitGTK's DMA-BUF renderer draws a blank window on some GPU
+/// drivers (NVIDIA in particular). Either can still be overridden from the environment.
+#[cfg(target_os = "linux")]
+fn linux_env() {
+    for (key, value) in [("GDK_BACKEND", "x11"), ("WEBKIT_DISABLE_DMABUF_RENDERER", "1")] {
+        if std::env::var_os(key).is_none() {
+            // SAFETY: the very start of run(), before memeity starts any other thread.
+            unsafe { std::env::set_var(key, value) };
+        }
+    }
+}
+
 /// macOS menu-bar icons are "template" images: black strokes on transparent, which
 /// macOS recolors for light/dark menu bars. Elsewhere the tray uses the full-colour app icon.
 #[cfg(target_os = "macos")]
@@ -1479,6 +1499,8 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_env();
     let (sync_tx, sync_rx) = tokio::sync::mpsc::unbounded_channel();
     let (text_tx, text_rx) = std::sync::mpsc::channel();
 
@@ -1491,7 +1513,14 @@ pub fn run() {
     #[cfg(not(debug_assertions))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
         log::info!("memeity was opened again; showing the running copy instead");
-        if !argv.iter().any(|a| a == settings::AUTOSTART_ARG) {
+        if argv.iter().any(|a| a == settings::AUTOSTART_ARG) {
+            return;
+        }
+        // Linux: a desktop shortcut that runs memeity stands in for the global shortcut
+        // (Wayland), so pressing it again closes the pane, like the shortcut does.
+        if cfg!(target_os = "linux") {
+            toggle_pane(app);
+        } else {
             show_pane(app);
         }
     }));

@@ -43,6 +43,9 @@
     scroll_reset_secs: number;
     theme: ThemeChoice | null;
     version: string;
+    /** Linux Wayland: no global shortcut (bind `launch_command` instead) or pasting. */
+    wayland: boolean;
+    launch_command: string | null;
   };
 
   const sections = [
@@ -716,6 +719,13 @@
         </div>
         {#if recording}
           <p class="note">Press the new combination, or Esc to cancel.</p>
+        {:else if status.wayland}
+          <p class="note">
+            Wayland doesn't let apps set shortcuts that work everywhere, so this one only works over other X11 apps.
+            For one that always works, add a custom shortcut in your desktop's keyboard settings that runs
+            <code class="cmd">{status.launch_command ?? "memeity"}</code>
+            (press it again to close the pane).
+          </p>
         {:else if status.shortcut_error}
           <p class="note warn">{status.shortcut_error}</p>
         {/if}
@@ -730,6 +740,9 @@
           <div>
             <h3>Enter key</h3>
             <p>What Enter (or a click) does with the selected meme. Shift+Enter does the other.</p>
+            {#if status.wayland}
+              <p class="note">On Wayland, memeity can't paste into other apps: it copies, and you paste with Ctrl+V.</p>
+            {/if}
           </div>
           <div class="segmented" role="radiogroup" aria-label="Enter key action">
             <button
@@ -737,7 +750,7 @@
               aria-checked={status.primary_action === "paste"}
               class:on={status.primary_action === "paste"}
               onclick={() => setPrimaryAction("paste")}
-              disabled={busy}
+              disabled={busy || status.wayland}
             >Paste to App</button>
             <button
               role="radio"
@@ -1368,10 +1381,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 10px 16px;
   }
 
+  /* Text keeps a readable width; a wide control drops below it instead of squeezing it. */
   .row > div:first-child {
+    flex: 1 1 220px;
     min-width: 0;
   }
 
@@ -1619,6 +1635,18 @@
 
   .title-row h1 {
     margin: 0;
+  }
+
+  .note .cmd {
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--muted);
+    color: var(--fg);
+    font: 11.5px "Geist Mono Variable", ui-monospace, "Cascadia Mono", monospace;
+    user-select: text;
+    -webkit-user-select: text;
+    word-break: break-all;
   }
 
   .note.top {
