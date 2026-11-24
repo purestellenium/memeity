@@ -30,10 +30,11 @@ memeity aims to fix this issue by hosting all of your memes on Google Drive - sy
 - **Tags**: color-coded tags that sync everywhere. Select a bunch of memes and tag them at once, then search with `#tag`.
 - **Easy setup with Google Drive**: just log into memeity with Google Drive for a near-instant setup. For your privacy, memeity only sees the files it creates itself and uses only a single folder.
 - **Quickly add memes**: drag and drop, or paste your memes into the pane to instantly process new images!
+- **GIF search**: not in your library yet? Type `!gif` before your search (or press `Ctrl+G`, or `Enter` when nothing matches) to search Tenor, then paste, copy or save the GIF straight from the pane.
 - **Quick & powerful built-in editor**: edit and markup your memes & templates in an instant, right inside the memeity pane.
 - **Automatic updates**: memeity handles all of its own updates, so you'll never have to worry about keeping up to date again.
 - **Cross-platform**: memeity is supported on Windows and macOS, with plans to expand to Linux + a web-based client!
-- **No telemetry**: memeity never phones home - I don't need your data, silly!
+- **No telemetry**: memeity never phones home - I don't need your data, silly! (The only exception is GIF search: when you search Tenor, your search text goes to Tenor (Google) - and only then.)
 
 ## Installation
 Grab the [latest release](https://github.com/purestellenium/memeity/releases/latest) for your platform, and install normally following the wizard / DMG file.

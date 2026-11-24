@@ -4,6 +4,7 @@
 mod clipboard;
 mod config;
 mod dupes;
+mod gifs;
 mod fuzzytext;
 mod google;
 #[cfg(target_os = "linux")]
@@ -170,6 +171,8 @@ struct Status {
     scroll_reset_secs: u32,
     /// Colour theme (Settings > Appearance); None = the default.
     theme: Option<config::Theme>,
+    /// The first-run feature tour should play in the pane.
+    tour: bool,
     version: String,
 }
 
@@ -298,6 +301,7 @@ fn status(app: &AppHandle) -> Status {
         pane_scale: settings::pane_scale(app),
         scroll_reset_secs: settings::scroll_reset_secs(app),
         theme: config(app).theme,
+        tour: config(app).toured == Some(false),
         version: app.package_info().version.to_string(),
     }
 }
@@ -605,10 +609,24 @@ fn open_local_folder(app: &AppHandle) {
 /// Finds (or creates) the "memeity" folder on Drive and starts syncing it.
 async fn setup_library_folder(app: &AppHandle) -> Result<(), String> {
     let folder = app.state::<AppState>().google.find_or_create_library().await?;
-    update_config(app, |c| c.drive_folder = Some(DriveFolder { id: folder.id, name: folder.name }));
+    update_config(app, |c| {
+        c.drive_folder = Some(DriveFolder { id: folder.id, name: folder.name });
+        // A first run ends with the feature tour in the pane.
+        if c.toured.is_none() {
+            c.toured = Some(false);
+        }
+    });
     load_library(app);
     sync::trigger(app);
     Ok(())
+}
+
+/// Devices set up before the tour existed skip it (Settings > About replays it).
+fn migrate_tour(app: &AppHandle) {
+    let cfg = config(app);
+    if cfg.toured.is_none() && cfg.drive_folder.is_some() {
+        update_config(app, |c| c.toured = Some(true));
+    }
 }
 
 /// Drive access level changed since this device last signed in (e.g. full Drive ->
@@ -1048,6 +1066,12 @@ async fn share_edited(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
     let name = header("x-filename").unwrap_or_else(|| "meme.png".into());
     let paste = header("x-action").as_deref() == Some("paste");
     let path = clipboard::temp_file(&name, bytes)?;
+    share_file(&app, path, paste).await
+}
+
+/// Pastes a file that isn't in the library (an edit, a Tenor GIF) into the app you were
+/// in, or copies it to the clipboard and hides the pane.
+pub(crate) async fn share_file(app: &AppHandle, path: PathBuf, paste: bool) -> Result<(), String> {
     if paste {
         let target = app.state::<AppState>().prev_window.load(Ordering::SeqCst);
         let handle = app.clone();
@@ -1058,7 +1082,7 @@ async fn share_edited(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
         tauri::async_runtime::spawn_blocking(move || clipboard::copy(&path))
             .await
             .map_err(|e| e.to_string())??;
-        hide_pane_after_copy(&app);
+        hide_pane_after_copy(app);
     }
     Ok(())
 }
@@ -1254,6 +1278,23 @@ async fn sign_in(app: AppHandle) -> Result<Status, String> {
 fn sign_out_cmd(app: AppHandle) -> Status {
     sign_out(&app);
     status(&app)
+}
+
+/// The feature tour was finished or skipped.
+#[tauri::command]
+fn finish_tour(app: AppHandle) {
+    update_config(&app, |c| c.toured = Some(true));
+}
+
+/// Settings > About > "Take the Tour": opens the pane and plays it again.
+#[tauri::command]
+fn replay_tour(app: AppHandle) {
+    if !is_ready(&app) {
+        return;
+    }
+    update_config(&app, |c| c.toured = Some(false));
+    let _ = app.emit("status-changed", ());
+    show_pane(&app);
 }
 
 /// Signed in but no library folder yet (e.g. the first attempt failed offline): retry.
@@ -1539,6 +1580,8 @@ pub fn run() {
             sign_in,
             sign_out_cmd,
             setup_drive_folder,
+            finish_tour,
+            replay_tour,
             sync_now,
             copy_diagnostics,
             report_problem,
@@ -1566,6 +1609,9 @@ pub fn run() {
             import::import_bytes,
             import::import_url,
             import::import_clipboard,
+            gifs::gif_search,
+            gifs::gif_share,
+            gifs::gif_save,
             set_dragging,
             set_editing,
             read_meme,
@@ -1626,6 +1672,8 @@ pub fn run() {
                 prev_window: AtomicIsize::new(0),
             });
 
+            // Before the scope check, which can clear the folder of an existing device.
+            migrate_tour(&handle);
             migrate_auth_scope(&handle);
 
             // Fill the typo-tolerant text cache from the index, so search works immediately.

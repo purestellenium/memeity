@@ -71,6 +71,7 @@
     { section: "general", title: "Pane size", words: "window width height bigger smaller large", find: "Pane size" },
     { section: "general", title: "Scroll back to top", words: "reset position remember", find: "Scroll back to top" },
     { section: "general", title: "Launch at login", words: "startup start boot autostart open automatically", find: "Launch at login" },
+    { section: "about", title: "Take the tour", words: "tour onboarding welcome intro tutorial help features guide", find: "Take the Tour" },
     {
       section: "appearance",
       title: "Theme",
@@ -1164,6 +1165,9 @@
           <button class="btn outline sm" onclick={() => openLink("website")}>Website</button>
           <button class="btn outline sm" onclick={() => openLink("privacy")}>Privacy policy</button>
           <button class="btn outline sm" onclick={() => openLink("source")}>Source code</button>
+          <button class="btn outline sm wide" onclick={() => act(() => invoke("replay_tour"))} disabled={busy || status.stage !== "ready"}>
+            Take the Tour
+          </button>
           <button class="btn outline sm wide" onclick={reportProblem} disabled={busy}>
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m8 2 1.88 1.88" /><path d="M14.12 3.88 16 2" />

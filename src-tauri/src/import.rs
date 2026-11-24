@@ -99,7 +99,7 @@ pub fn add_bytes(app: &AppHandle, name_hint: Option<&str>, bytes: &[u8]) -> Resu
 }
 
 /// After a batch of imports: show them right away and start indexing/uploading.
-fn finish(app: &AppHandle, result: &ImportResult) {
+pub(crate) fn finish(app: &AppHandle, result: &ImportResult) {
     if !result.added.is_empty() {
         refresh_library(app);
         sync::trigger(app);
@@ -108,7 +108,7 @@ fn finish(app: &AppHandle, result: &ImportResult) {
 
 // ---------- URLs ----------
 
-fn client() -> reqwest::Client {
+pub(crate) fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent("memeity (https://memeity.stelle.codes)")
         .timeout(Duration::from_secs(30))
@@ -117,7 +117,7 @@ fn client() -> reqwest::Client {
 }
 
 /// Downloads `url` (capped at MAX_BYTES). Returns the bytes, content type and final URL.
-async fn fetch(client: &reqwest::Client, url: &reqwest::Url) -> Result<(Vec<u8>, String, reqwest::Url), String> {
+pub(crate) async fn fetch(client: &reqwest::Client, url: &reqwest::Url) -> Result<(Vec<u8>, String, reqwest::Url), String> {
     let mut resp = client.get(url.clone()).send().await.map_err(|e| format!("Couldn't download that link: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("That link returned {}.", resp.status()));

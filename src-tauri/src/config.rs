@@ -54,6 +54,11 @@ pub struct Config {
     /// The one-time "star memeity on GitHub" prompt (see `claim_star_prompt` in lib.rs).
     #[serde(default)]
     pub star_prompt: StarPrompt,
+    /// The first-run feature tour in the pane. Some(false) = due (set when the Drive
+    /// folder is first set up, or replayed from Settings). None = not set up yet; on
+    /// devices set up before the tour existed, that's settled as seen at startup.
+    #[serde(default)]
+    pub toured: Option<bool>,
 }
 
 /// Tracks when the one-time star prompt is due. Per device, like the rest of the config.
