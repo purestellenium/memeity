@@ -201,7 +201,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/$name"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/$name"
           tar -czf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP/$name" .
-          tar -tzf "$RUNNER_TEMP/$name.tar.gz" | grep -q 'usr/bin/'
+          # Not `tar | grep -q`: grep exiting early would SIGPIPE tar and trip pipefail.
+          listing=$(tar -tzf "$RUNNER_TEMP/$name.tar.gz")
+          grep -q 'usr/bin/' <<< "$listing"
           gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/$name.tar.gz" --clobber
 
       # Tauri notarizes the .app inside the DMG but not the DMG itself, which Gatekeeper
