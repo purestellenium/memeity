@@ -1583,11 +1583,25 @@
     selectGif(next.reduce((best, j) => (Math.abs(top[j] - y) < Math.abs(top[best] - y) ? j : best), next[0]));
   }
 
+  /** The Tenor GIF being downloaded for a paste / copy / save: the full GIF can take a while. */
+  let gifWorking = $state<{ id: string; label: string } | null>(null);
+
+  /** Runs `fn` while showing `label` on the GIF's tile and in the footer. */
+  async function whileDownloading(g: Gif, label: string, fn: () => Promise<void>) {
+    gifWorking = { id: g.id, label };
+    try {
+      await fn();
+    } finally {
+      gifWorking = null;
+    }
+  }
+
   /** Pastes or copies a Tenor GIF without adding it to the library. */
   const shareGif = (paste: boolean, i = gifSel) =>
     act(async () => {
       const g = gifs[i];
-      if (g) await invoke("gif_share", { url: g.url, title: g.title, paste }); // hides the pane
+      // The command hides the pane once it's done.
+      if (g) await whileDownloading(g, paste ? "Pasting GIF…" : "Copying GIF…", () => invoke("gif_share", { url: g.url, title: g.title, paste }));
     });
 
   /** Adds a Tenor GIF to the library (and so to Drive and every device). */
@@ -1595,9 +1609,11 @@
     act(async () => {
       const g = gifs[i];
       if (!g) return;
-      const r = await invoke<ImportResult>("gif_save", { url: g.url, title: g.title });
-      const name = (r.added[0] ?? r.duplicates[0] ?? g.title).split("/").pop();
-      showToast({ message: r.added.length ? `Added ${name} to your library` : `${name} is already in your library` });
+      await whileDownloading(g, "Saving GIF…", async () => {
+        const r = await invoke<ImportResult>("gif_save", { url: g.url, title: g.title });
+        const name = (r.added[0] ?? r.duplicates[0] ?? g.title).split("/").pop();
+        showToast({ message: r.added.length ? `Added ${name} to your library` : `${name} is already in your library` });
+      });
     });
 
   // ---------- actions menu ----------
@@ -2272,10 +2288,12 @@
                   <button
                     class="tile"
                     class:selected={i === gifSel}
+                    class:working={gifWorking?.id === g.id}
                     data-g={i}
                     role="option"
                     id={`gif-${i}`}
                     aria-selected={i === gifSel}
+                    aria-busy={gifWorking?.id === g.id}
                     aria-label={g.title}
                     tabindex="-1"
                     style:aspect-ratio="1 / {gifRatio(g)}"
@@ -2296,6 +2314,7 @@
                       draggable="false"
                       referrerpolicy="no-referrer"
                     />
+                    {#if gifWorking?.id === g.id}<span class="gif-spinner" aria-hidden="true"></span>{/if}
                   </button>
                 {/each}
               </div>
@@ -2571,7 +2590,11 @@
         Delete <kbd>↵</kbd>
       </button>
     {:else if stage === "ready" && gifMode}
-      <span class="status muted">GIFs from Tenor</span>
+      {#if gifWorking}
+        <span class="status busy" role="status"><i class="dot"></i>{gifWorking.label}</span>
+      {:else}
+        <span class="status muted">GIFs from Tenor</span>
+      {/if}
       <span class="spacer"></span>
       <button class="action" onclick={leaveGifs}>Back to memes <kbd>Esc</kbd></button>
       {#if currentGif}
@@ -3479,6 +3502,38 @@
 
   .tile.doomed {
     outline-color: var(--destructive);
+  }
+
+  /* A Tenor GIF is downloading for a paste / copy / save: dim it and show a spinner. */
+  .tile.working img {
+    filter: brightness(0.5);
+  }
+
+  .gif-spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gif-spinner {
+      animation: pulse 1s ease-in-out infinite;
+      border-color: #fff;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* ---------- empty states ---------- */
