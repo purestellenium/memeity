@@ -33,11 +33,25 @@ memeity aims to fix this issue by hosting all of your memes on Google Drive - sy
 - **GIF search**: not in your library yet? Type `!gif` before your search (or press `Ctrl+G`, or `Enter` when nothing matches) to search Tenor, then paste, copy or save the GIF straight from the pane.
 - **Quick & powerful built-in editor**: edit and markup your memes & templates in an instant, right inside the memeity pane.
 - **Automatic updates**: memeity handles all of its own updates, so you'll never have to worry about keeping up to date again.
-- **Cross-platform**: memeity is supported on Windows and macOS, with plans to expand to Linux + a web-based client!
+- **Cross-platform**: memeity runs on Windows, macOS and Linux (x86-64 and ARM64), with a web-based client planned.
+- **A quick tour**: new installs get a short walkthrough of the pane. Replay it any time from Settings > About.
 - **No telemetry**: memeity never phones home - I don't need your data, silly! (The only exception is GIF search: when you search Tenor, your search text goes to Tenor (Google) - and only then.)
 
 ## Installation
-Grab the [latest release](https://github.com/purestellenium/memeity/releases/latest) for your platform, and install normally following the wizard / DMG file.
+Grab the [latest release](https://github.com/purestellenium/memeity/releases/latest) for your platform:
+
+- **Windows**: run the `x64-setup.exe` (or `arm64-setup.exe` on ARM) and follow the wizard.
+- **macOS**: open the `.dmg` and drag memeity into Applications.
+- **Linux**: download the `.AppImage`, make it executable and run it. It updates itself. Or install the `.deb` (Debian, Ubuntu) or `.rpm` (Fedora, openSUSE); those open the release page when an update is ready.
+
+The Linux builds need Ubuntu 24.04, Fedora 39, Debian 13 or newer (or any distro with a recent enough glibc). On Arch and similar, use the AppImage (it needs `fuse2`).
+
+### Linux on Wayland
+Wayland doesn't let apps set global shortcuts or type into other apps, so on Wayland memeity runs through XWayland and behaves a little differently:
+- Bind your own shortcut: in your desktop's keyboard settings, add a custom shortcut that runs memeity (Settings > General shows the exact command). Pressing it again closes the pane.
+- "Paste to App" copies instead: paste with `Ctrl+V`.
+
+It works as usual on X11.
 
 ## Acknowledgements
 Thanks to Ivie for helping me test it when it was still just in v0!
