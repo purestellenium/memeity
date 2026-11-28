@@ -34,7 +34,6 @@ memeity aims to fix this issue by hosting all of your memes on Google Drive - sy
 - **Quick & powerful built-in editor**: edit and markup your memes & templates in an instant, right inside the memeity pane.
 - **Automatic updates**: memeity handles all of its own updates, so you'll never have to worry about keeping up to date again.
 - **Cross-platform**: memeity runs on Windows, macOS and Linux (x86-64 and ARM64), with a web-based client planned.
-- **A quick tour**: new installs get a short walkthrough of the pane. Replay it any time from Settings > About.
 - **No telemetry**: memeity never phones home - I don't need your data, silly! (The only exception is GIF search: when you search Tenor, your search text goes to Tenor (Google) - and only then.)
 
 ## Installation
@@ -55,6 +54,7 @@ It works as usual on X11.
 
 ## Acknowledgements
 Thanks to Ivie for helping me test it when it was still just in v0!
+Thanks to Karim for helping us port to Linux!
 
 ## AI Declaration
 I used AI heavily (Claude Opus 5.5) in the development of memeity- I just wanted something that worked, and so using AI was the quickest way to make this happen.
